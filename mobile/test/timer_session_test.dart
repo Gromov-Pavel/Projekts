@@ -145,6 +145,23 @@ void main() {
     },
   );
 
+  test('automatic protocol recognition waits for valid start, preserves fragmented frame and records confirmed profile', () {
+    final session = TimerSession(onImport: (_, _) async => true);
+    final device = TimerLink(BluetoothDevice.fromId('00:11:22:33:44:77'));
+    device.profile = TimerProtocols.autoId;
+    device.decoder = TimerProtocols.decoder(TimerProtocols.autoId);
+    session.receive(device, [1, 2, 3, ...shot]);
+    expect(device.profile, TimerProtocols.autoId);
+    expect(device.active, isNull);
+    session.receive(device, start.sublist(0, 3));
+    expect(device.profile, TimerProtocols.autoId);
+    session.receive(device, [...start.sublist(3), ...shot]);
+    expect(device.profile, TimerProtocols.legacyId);
+    expect(device.active!.times, [4.36]);
+    session.receive(device, shot);
+    expect(device.active!.times, [4.36]);
+  });
+
   test('full raw journal does not interrupt live timing', () {
     final session = TimerSession(onImport: (_, _) async => true)..full = true;
     final device = link('00:11:22:33:44:55');

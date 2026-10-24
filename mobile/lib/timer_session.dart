@@ -10,6 +10,7 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:share_plus/share_plus.dart';
 
 import 'timer_protocol.dart';
+import 'timer_preferences.dart';
 
 String timerErrorMessage(Object error) {
   final text = error.toString().toLowerCase();
@@ -85,10 +86,109 @@ class TimerSession extends ChangeNotifier {
 
   TimerSession({required this.onImport});
 
+  final preferences = TimerPreferences();
+  File? _preferencesFile;
+  Future<void> _preferencesQueue = Future.value();
+  Timer? _reconnectTimer;
+  bool _autoConnecting = false;
+  bool _restored = false;
+  final _paused = <String>{};
+
+  Future<void> restoreKnownTimers() async {
+    if (_restored || !mounted) return;
+    _restored = true;
+    try {
+      final dir = await getApplicationDocumentsDirectory();
+      if (!mounted) return;
+      _preferencesFile = File('${dir.path}/known-timers.json');
+      if (await _preferencesFile!.exists()) {
+        preferences.read(await _preferencesFile!.readAsString());
+      }
+      if (!mounted) return;
+      selectedId = preferences.selectedId;
+      for (final timer in preferences.ordered) {
+        links
+                .putIfAbsent(
+                  timer.id,
+                  () => TimerLink(BluetoothDevice.fromId(timer.id)),
+                )
+                .status =
+            'Сохранённый таймер';
+      }
+      notifyListeners();
+      _reconnectTimer = Timer.periodic(
+        const Duration(seconds: 20),
+        (_) => _autoScan(),
+      );
+      await _autoScan();
+    } catch (e) {
+      _report('Загрузка сохранённых таймеров', e);
+    }
+  }
+
+  Future<void> _savePreferences() {
+    _preferencesQueue = _preferencesQueue.then((_) async {
+      try {
+        final file = _preferencesFile;
+        if (file != null) await preferences.save(file);
+      } catch (e) {
+        _report('Сохранение таймеров', e);
+      }
+    });
+    return _preferencesQueue;
+  }
+
+  Future<void> setAutoConnect(String id, bool enabled) async {
+    final timer = preferences.timers[id];
+    if (timer == null) return;
+    timer.autoConnect = enabled;
+    if (enabled) _paused.remove(id);
+    if (mounted) notifyListeners();
+    await _savePreferences();
+    if (enabled) await _autoScan();
+  }
+
+  Future<void> _autoScan() async {
+    if (!mounted || scanning || busy || connectedCount >= 5) return;
+    if (!preferences.timers.values.any(
+      (t) =>
+          t.autoConnect &&
+          !_paused.contains(t.id) &&
+          !(links[t.id]?.device.isConnected ?? false),
+    )) {
+      return;
+    }
+    await scan(requestPermissions: false);
+  }
+
+  Future<void> _connectKnown() async {
+    if (_autoConnecting || busy || !mounted) return;
+    _autoConnecting = true;
+    final nearby = found.map((r) => r.device.remoteId.str).toSet();
+    try {
+      for (final timer in preferences.ordered) {
+        if (!mounted || connectedCount >= 5) break;
+        if (!timer.autoConnect ||
+            _paused.contains(timer.id) ||
+            !nearby.contains(timer.id)) {
+          continue;
+        }
+        final device =
+            links[timer.id]?.device ?? BluetoothDevice.fromId(timer.id);
+        if (!device.isConnected) await connect(device, automatic: true);
+      }
+    } finally {
+      _autoConnecting = false;
+    }
+  }
+
   void _listenForScan() {
     if (_scanSubscription != null) return;
     _scanSubscription = FlutterBluePlus.scanResults.listen((results) {
-      if (mounted) _change(() => found = results);
+      if (mounted) {
+        _change(() => found = results);
+        unawaited(_connectKnown());
+      }
     }, onError: (Object e) => _report('Результаты поиска', e));
     _scanningSubscription = FlutterBluePlus.isScanning.listen((value) {
       if (mounted) _change(() => scanning = value);
@@ -121,7 +221,7 @@ class TimerSession extends ChangeNotifier {
     );
   }
 
-  Future<void> scan() async {
+  Future<void> scan({bool requestPermissions = true}) async {
     if (scanning || busy) return;
     _listenForScan();
     try {
@@ -132,8 +232,14 @@ class TimerSession extends ChangeNotifier {
       final required = sdk >= 31
           ? [Permission.bluetoothScan, Permission.bluetoothConnect]
           : [Permission.locationWhenInUse];
-      final permissions = await required.request();
+      final permissions = requestPermissions
+          ? await required.request()
+          : {
+              for (final permission in required)
+                permission: await permission.status,
+            };
       if (permissions.values.any((status) => !status.isGranted)) {
+        if (!requestPermissions) return;
         _show(
           sdk >= 31
               ? 'Разрешите «Устройства поблизости» для IPSC тренировОчка в настройках телефона.'
@@ -146,7 +252,9 @@ class TimerSession extends ChangeNotifier {
               .first
               .timeout(const Duration(seconds: 5)) !=
           BluetoothAdapterState.on) {
-        _show('Включите Bluetooth на телефоне, затем повторите поиск.');
+        if (requestPermissions) {
+          _show('Включите Bluetooth на телефоне, затем повторите поиск.');
+        }
         return;
       }
       if (!mounted) return;
@@ -154,7 +262,9 @@ class TimerSession extends ChangeNotifier {
         searched = true;
         found = [];
         lastError = null;
-        message = 'Ищем таймер. Дождитесь завершения поиска и выберите имя своего устройства.';
+        message = requestPermissions
+            ? 'Ищем таймер. Выберите своё устройство.'
+            : 'Ищем сохранённые таймеры…';
       });
       await FlutterBluePlus.startScan(timeout: const Duration(seconds: 10));
     } catch (e) {
@@ -162,13 +272,17 @@ class TimerSession extends ChangeNotifier {
     }
   }
 
-  Future<void> connect(BluetoothDevice device) async {
+  Future<void> connect(BluetoothDevice device, {bool automatic = false}) async {
     if (busy || connectedCount >= 5 || device.isConnected) {
       return;
     }
     _change(() => busy = true);
     final link = links[device.remoteId.str] ?? TimerLink(device);
-    selectedId = device.remoteId.str;
+    if (!automatic || selectedId == null) {
+      selectedId = device.remoteId.str;
+      preferences.selectedId = selectedId;
+    }
+    _paused.remove(device.remoteId.str);
     links[device.remoteId.str] = link;
     try {
       await FlutterBluePlus.stopScan();
@@ -186,7 +300,11 @@ class TimerSession extends ChangeNotifier {
           link.decoder = TimerProtocols.decoder(link.profile);
           finishSeries(link, partial: true);
           unawaited(_syncService());
-          link.status = 'Отключён; сохранённые времена могут быть неполными';
+          link.status =
+              preferences.timers[device.remoteId.str]?.autoConnect == true &&
+                  !_paused.contains(device.remoteId.str)
+              ? 'Восстанавливаем связь… Серия может быть неполной.'
+              : 'Отключён; сохранённые времена могут быть неполными';
           if (mounted) _change(() {});
         }
       });
@@ -195,10 +313,24 @@ class TimerSession extends ChangeNotifier {
         await device.disconnect();
         return;
       }
-      link.status = 'Соединение установлено. Выберите приём выстрелов ниже.';
-      if (link.acceptedLegacy && link.profile == TimerProtocols.legacyId) {
-        final c = legacyCharacteristic(link);
-        if (c != null) await subscribe(link, c);
+      final id = device.remoteId.str;
+      final saved = preferences.timers.putIfAbsent(
+        id,
+        () => SavedTimer(
+          id,
+          device.platformName.isEmpty ? 'Таймер' : device.platformName,
+        ),
+      );
+      if (device.platformName.isNotEmpty) saved.name = device.platformName;
+      await _savePreferences();
+      final c = legacyCharacteristic(link);
+      if (c != null) {
+        link.profile = TimerProtocols.autoId;
+        await subscribe(link, c);
+      } else {
+        link.profile = TimerProtocols.rawId;
+        link.status =
+            'Протокол не распознан. Откройте технические подробности.';
       }
       _record({
         'device': device.remoteId.str,
@@ -269,6 +401,8 @@ class TimerSession extends ChangeNotifier {
       }
       link.status = link.profile == TimerProtocols.rawId
           ? 'Диагностика включена. Времена выстрелов пока не распознаются.'
+          : link.profile == TimerProtocols.autoId
+          ? 'Определяем протокол. Запустите серию на таймере; времена сверяйте с его экраном.'
           : 'Приём включён. Запустите новую серию на таймере, затем остановите её.';
       if (mounted) _change(() {});
     } catch (e) {
@@ -291,7 +425,18 @@ class TimerSession extends ChangeNotifier {
       'profile': link.profile,
       'hex': bytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join(' '),
     });
-    for (final event in link.decoder.add(bytes)) {
+    final events = link.decoder.add(bytes);
+    if (link.profile == TimerProtocols.autoId && events.isNotEmpty) {
+      link.profile = events.first.profileId;
+      link.acceptedLegacy = true;
+      link.status = 'Special Pie legacy: протокол распознан, приём включён.';
+      final saved = preferences.timers[link.device.remoteId.str];
+      if (saved != null) {
+        saved.profile = link.profile;
+        unawaited(_savePreferences());
+      }
+    }
+    for (final event in events) {
       if (event.kind == TimerEventKind.start) {
         finishSeries(link);
         link.pending.removeWhere((series) => series.saved);
@@ -327,6 +472,7 @@ class TimerSession extends ChangeNotifier {
   }
 
   Future<void> disconnect(TimerLink link) async {
+    _paused.add(link.device.remoteId.str);
     try {
       await link.notifications?.cancel();
       await link.connection?.cancel();
@@ -378,7 +524,12 @@ class TimerSession extends ChangeNotifier {
   }
 
   TimerLink? get selected => links[selectedId];
-  void select(String id) => _change(() => selectedId = id);
+  void select(String id) {
+    _change(() => selectedId = id);
+    preferences.selectedId = id;
+    unawaited(_savePreferences());
+  }
+
   void showMessage(String text) => _show(text);
   BluetoothCharacteristic? legacyCharacteristic(TimerLink link) => link.services
       .expand((s) => s.characteristics)
@@ -457,6 +608,7 @@ class TimerSession extends ChangeNotifier {
   @override
   void dispose() {
     _disposed = true;
+    _reconnectTimer?.cancel();
     _scanSubscription?.cancel();
     _scanningSubscription?.cancel();
     unawaited(FlutterBluePlus.stopScan().catchError((Object _) {}));

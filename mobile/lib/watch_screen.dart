@@ -14,7 +14,7 @@ class WatchScreen extends StatelessWidget {
         padding: const EdgeInsets.all(16),
         children: [
           const Text(
-            'Включите Bluetooth на обоих устройствах. Интернет не нужен.',
+            'Часы должны быть подключены к Zepp. Оставьте Zepp работающим на телефоне. Интернет для результатов не нужен.',
           ),
           SwitchListTile(
             title: const Text('Связь с часами'),

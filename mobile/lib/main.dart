@@ -88,7 +88,7 @@ class _TrainingHomeState extends State<TrainingHome> {
       });
       return _timerSaveQueue;
     },
-  );
+  )..restoreKnownTimers();
   @override
   void dispose() {
     _watchBridge?.dispose();

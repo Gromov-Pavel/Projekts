@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:typed_data';
 
-import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:ipsc_training/timer_session.dart';
 import 'package:ipsc_training/watch_bridge.dart';
@@ -96,6 +95,39 @@ void main() {
       await bridge.handleCommand({'run': bridge.run, 'op': 1});
       expect(bridge.controllable, false);
       expect(bridge.phase, WatchPhase.unavailable);
+    },
+  );
+  test(
+    'repeated finish for an already finished phone run is harmless',
+    () async {
+      final packets = <Uint8List>[];
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(WatchBridge.channel, (call) async {
+            if (call.method == 'publish') {
+              packets.add(Uint8List.fromList(call.arguments as Uint8List));
+            }
+            return null;
+          });
+      final bridge = WatchBridge(TimerSession(onImport: (_, _) async => true));
+      addTearDown(bridge.dispose);
+      var commands = 0;
+      bridge.selectPhone(true);
+      bridge.attachPhone((_) async {
+        commands++;
+      });
+      bridge.enabled = bridge.approved = true;
+      bridge.phoneState(WatchPhase.finished, [], canControl: true);
+      await bridge.handleCommand({'run': bridge.run, 'op': 2});
+      await Future<void>.delayed(Duration.zero);
+      expect(commands, 0);
+      expect(packets.last[1] & 64, 0);
+      final oldRun = bridge.run;
+      bridge.phoneState(WatchPhase.running, [], canControl: true, newRun: true);
+      await bridge.handleCommand({'run': oldRun, 'op': 2});
+      await Future<void>.delayed(Duration.zero);
+      expect(commands, 0);
+      expect(bridge.phase, WatchPhase.running);
+      expect(packets.last[1] & 64, 0);
     },
   );
 }

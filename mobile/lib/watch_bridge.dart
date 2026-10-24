@@ -9,7 +9,7 @@ import 'timer_session.dart';
 
 enum WatchPhase { idle, preparing, running, finished, unavailable }
 
-/// One ATT payload at the default 23-byte MTU. Milliseconds, little endian.
+/// Compact v1 snapshot. Milliseconds, little endian.
 Uint8List watchPacket({
   required int run,
   required int revision,
@@ -84,10 +84,7 @@ class WatchBridge extends ChangeNotifier {
               .invokeMethod<int>('androidSdk') ??
           31;
       if (sdk >= 31) {
-        final grants = await [
-          Permission.bluetoothAdvertise,
-          Permission.bluetoothConnect,
-        ].request();
+        final grants = await [Permission.bluetoothConnect].request();
         if (grants.values.any((s) => !s.isGranted)) {
           throw StateError('Разрешите устройства поблизости');
         }
@@ -103,7 +100,9 @@ class WatchBridge extends ChangeNotifier {
       enabled = true;
       session.watchBridgeRunning = true;
       await session.refreshBackgroundService();
-      status = 'На часах нажмите «Подключить»';
+      status = peer == null
+          ? 'Откройте приложение часов через Zepp'
+          : 'Подтвердите свои часы на этом экране';
       _lastPublished = null;
       _externalChanged();
       _publish();
@@ -253,8 +252,18 @@ class WatchBridge extends ChangeNotifier {
   @visibleForTesting
   Future<void> handleCommand(Map<dynamic, dynamic> raw) async {
     if (!enabled || !approved || _disposed || _commandBusy) return;
-    if (raw['run'] != run ||
-        !controllable ||
+    if (raw['run'] != run) {
+      _publish(force: true);
+      return;
+    }
+    if (phone &&
+        raw['run'] == run &&
+        raw['op'] == 2 &&
+        phase == WatchPhase.finished) {
+      _publish(force: true);
+      return;
+    }
+    if (!controllable ||
         raw['op'] is! int ||
         ![1, 2].contains(raw['op']) ||
         (raw['op'] == 1 &&

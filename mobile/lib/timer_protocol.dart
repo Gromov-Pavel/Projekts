@@ -27,11 +27,13 @@ class TimerProfile {
   final TimerDecoder Function() createDecoder;
 }
 
-/// Profiles are selected explicitly. Unknown timers remain raw diagnostics.
+/// Automatic detection requires a valid framed packet; unknown formats stay raw.
 class TimerProtocols {
   static const rawId = 'raw';
+  static const autoId = 'auto';
   static const legacyId = 'special-pie-legacy-experimental';
   static final profiles = <TimerProfile>[
+    TimerProfile(autoId, 'Автоматически — ожидаем данные', _LegacyDecoder.new),
     TimerProfile(rawId, 'Raw: неизвестный протокол', _RawDecoder.new),
     TimerProfile(
       legacyId,
@@ -41,7 +43,10 @@ class TimerProtocols {
   ];
 
   static TimerDecoder decoder(String id) => profiles
-      .firstWhere((profile) => profile.id == id, orElse: () => profiles.first)
+      .firstWhere(
+        (profile) => profile.id == id,
+        orElse: () => profiles.firstWhere((p) => p.id == rawId),
+      )
       .createDecoder();
 }
 

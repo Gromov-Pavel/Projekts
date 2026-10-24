@@ -4,84 +4,78 @@ import {readFileSync} from 'node:fs'
 import vm from 'node:vm'
 import * as wire from '../lib/wire.js'
 
+const flush = async () => { for(let i=0;i<10;i++) await Promise.resolve() }
 function fixture() {
-  let Link, now = 10000, serial = 0
-  const callbacks = {}, writes = [], timers = new Map(), reads = []
-  const ble = {
-    mstStartScan: cb => {callbacks.scan=cb;return true}, mstStopScan:()=>{},
-    mstConnect: (address, cb) => { callbacks.connection=cb; return true },
-    mstOnPrepare:cb=>{callbacks.prepare=cb},
-    mstOnCharaValueArrived:cb=>{callbacks.read=cb},
-    mstOnCharaNotification:cb=>{callbacks.notify=cb},
-    mstOnDescWriteComplete:cb=>{callbacks.descriptor=cb},
-    mstOnCharaWriteComplete:cb=>{callbacks.write=cb},
-    mstBuildProfile:()=>true,
-    mstReadCharacteristic:(...a)=>reads.push(a),
-    mstWriteDescriptor:()=>true,
-    mstWriteCharacteristic:(...a)=>writes.push(a),
-    mstDisconnect:()=>{},mstDestroyProfileInstance:()=>{},mstOffAllCb:()=>{},
-  }
+  let Link, now=10000, serial=0, response
+  const timers=new Map(), calls=[]
   const source=readFileSync(new URL('../lib/phone.js',import.meta.url),'utf8')
     .replace(/^import .*$/gm,'').replace('export class PhoneLink','class PhoneLink')
-  vm.runInNewContext(source+'\ncapture(PhoneLink)', {...wire,ble,
-    Date:{now:()=>now},Uint8Array,ArrayBuffer,DataView,
-    setInterval:cb=>{timers.set(++serial,cb);return serial},
-    setTimeout:cb=>{timers.set(++serial,cb);return serial},
-    clearInterval:id=>timers.delete(id),clearTimeout:id=>timers.delete(id),
-    capture:C=>{Link=C}})
-  const link = new Link(()=>{})
-  return {link,callbacks,writes,reads,timers,advance:ms=>{now+=ms}}
+  vm.runInNewContext(source+'\ncapture(PhoneLink)', {...wire,Date:{now:()=>now},Promise,Uint8Array,ArrayBuffer,DataView,
+    setInterval:cb=>{timers.set(++serial,cb);return serial},clearInterval:id=>timers.delete(id),capture:C=>{Link=C}})
+  const link=new Link(()=>{},req=>{calls.push(req);return typeof response==='function'?response(req):response})
+  return {link,calls,timers,respond:r=>{response=r},advance:ms=>{now+=ms}}
 }
-function frame({run=7, revision=9,phase=0,count=0,total=0,split=0xffffffff,flags=48}={}) {
-  const data=new ArrayBuffer(20), b=new DataView(data)
+function frame({run=7,revision=9,phase=0,count=0,total=0,split=0xffffffff,flags=48,session='a'.repeat(32)}={}) {
+  const bytes=new ArrayBuffer(20), b=new DataView(bytes)
   b.setUint8(0,1);b.setUint8(1,flags|phase);b.setUint16(2,count,true)
-  b.setUint32(4,run,true);b.setUint32(8,revision,true)
-  b.setUint32(12,total,true);b.setUint32(16,split,true)
-  return data
+  b.setUint32(4,run,true);b.setUint32(8,revision,true);b.setUint32(12,total,true);b.setUint32(16,split,true)
+  return {session,packet:Array.from(new Uint8Array(bytes))}
 }
-test('documented BLE callbacks carry live shots and commands; no false finish on disconnect',()=>{
-  const f=fixture(),{link,callbacks}=f
-  link.connect()
-  callbacks.scan({service_uuid_array:[wire.SERVICE.toUpperCase()],dev_addr:new ArrayBuffer(6)})
-  callbacks.connection({connected:0,connect_id:4})
-  callbacks.prepare({profile:11,status:0})
-  assert.equal(f.reads.length,1)
-  callbacks.read({profile:11,uuid:wire.STATE,status:8})
-  assert.equal(link.fresh(),false)
-  callbacks.read({profile:11,uuid:wire.STATE,status:0,data:frame({run:123456,revision:0,phase:4,flags:0})})
-  assert.match(link.message,/123456/)
-  link.command(true);assert.equal(f.writes.length,0)
-  callbacks.read({profile:11,uuid:wire.STATE,status:0,data:frame()})
-  callbacks.descriptor({profile:11,chara:wire.STATE,status:0})
-  assert.equal(link.fresh(),true)
-  link.command(true);link.command(true)
-  assert.equal(f.writes.length,1)
-  assert.ok(link.pending)
-  callbacks.notify({profile:11,uuid:wire.STATE,data:frame({run:8,revision:10,phase:1})})
-  assert.equal(link.pending,null)
-  callbacks.notify({profile:11,uuid:wire.STATE,data:frame({run:8,revision:11,phase:2,count:2,total:1640,split:390})})
-  assert.equal(link.state.total,1640)
-  link.command(false);assert.equal(f.writes.length,2)
-  callbacks.write({profile:11,uuid:wire.COMMAND,status:0})
-  assert.ok(link.pending) // GATT receipt is not a timer completion.
-  callbacks.connection({connected:2,connect_id:4})
-  assert.equal(link.fresh(),false);assert.equal(link.state.phase,2)
-  link.command(false);assert.equal(f.writes.length,2)
-  assert.equal(f.timers.size,0)
+test('Zepp confirmation, live shots and start/finish keep transport receipt separate from completion',async()=>{
+  const f=fixture(),{link}=f
+  f.respond(frame({run:123456,revision:0,phase:4,flags:0}));link.connect();await flush()
+  assert.match(link.message,/123456/);link.command(true);await flush()
+  assert.equal(f.calls.filter(x=>x.method==='IPSC_COMMAND').length,0)
+  f.respond(frame());link.poll();await flush();assert.equal(link.fresh(),true)
+  f.respond({accepted:true});link.command(true);link.command(true);await flush()
+  assert.equal(f.calls.filter(x=>x.method==='IPSC_COMMAND').length,1);assert.equal(f.calls.find(x=>x.method==='IPSC_COMMAND').params.session,'a'.repeat(32));assert.ok(link.pending)
+  link.receive(frame({run:8,revision:10,phase:1}));assert.equal(link.pending,null)
+  link.receive(frame({run:8,revision:11,phase:2,count:2,total:1640,split:390}))
+  assert.equal(link.state.total,1640);assert.equal(link.state.split,390)
+  link.command(false);await flush();assert.ok(link.pending)
+  link.receive(frame({run:8,revision:12,phase:3,count:2,total:1640,split:390}));assert.equal(link.pending,null)
 })
-test('tuple callbacks, stale heartbeat, timeout and teardown reject delayed packets',()=>{
-  const f=fixture(),{link,callbacks}=f
-  link.connect()
-  callbacks.scan({service_uuid_array:[wire.SERVICE],dev_addr:new ArrayBuffer(6)})
-  callbacks.connection({connected:0,connect_id:4});callbacks.prepare(11,0)
-  callbacks.read(11,wire.STATE,frame(),0)
-  assert.equal(link.fresh(),true)
-  f.advance(6000);link.poll()
-  assert.equal(link.fresh(),false);assert.match(link.message,/старые/)
-  callbacks.read(11,wire.STATE,frame(),0)
-  link.command(true);f.advance(11000);link.poll()
-  assert.equal(link.pending,null)
-  const old = callbacks.notify
-  link.close();old(11,wire.STATE,frame({revision:12,count:1,total:1250}),20)
-  assert.equal(link.state.count,0);assert.equal(f.timers.size,0)
+test('heartbeat rejects regressive frames and new authorization session clears old approval state',async()=>{
+  const f=fixture(),{link}=f;f.respond(frame());link.connect();await flush()
+  f.advance(4000);link.receive(frame());assert.equal(link.fresh(),true)
+  f.advance(6000);link.receive(frame({revision:8}));assert.equal(link.fresh(),false)
+  link.receive(frame({run:654321,revision:0,phase:4,flags:0,session:'b'.repeat(32)}))
+  assert.match(link.message,/654321/);assert.equal(link.state.control,false)
+  const count=f.calls.length;link.command(true);await flush();assert.equal(f.calls.length,count)
+})
+test('lost Zepp, errors and late responses cannot restore a closed connection',async()=>{
+  const f=fixture(),{link}=f
+  f.respond(()=>Promise.reject(new Error('Zepp disconnected')));link.connect();await flush()
+  assert.match(link.message,/Zepp/);assert.equal(link.fresh(),false)
+  f.respond({error:'Включите связь в IPSC на телефоне'});link.poll();await flush();assert.match(link.message,/Включите/)
+  let resolve;f.respond(()=>new Promise(r=>{resolve=r}));link.poll();await flush()
+  link.close();resolve(frame());await flush();assert.equal(link.state,null);assert.equal(f.timers.size,0)
+})
+
+test('finish during pending start is remembered and stop retries are bounded to the same run',async()=>{
+  const f=fixture(),{link}=f
+  f.respond(req=>req.method==='IPSC_COMMAND'?{accepted:true}:frame())
+  link.connect();await flush();link.command(true);link.command(false);await flush()
+  assert.equal(link.stopRequested,true)
+  assert.equal(f.calls.filter(x=>x.method==='IPSC_COMMAND').length,1)
+  const running=frame({run:8,revision:10,phase:1})
+  f.respond(req=>req.method==='IPSC_COMMAND'?{accepted:true}:running)
+  link.receive(running);await flush()
+  let stops=()=>f.calls.filter(x=>x.method==='IPSC_COMMAND'&&x.params.packet[1]===2)
+  assert.equal(stops().length,1);assert.equal(new DataView(new Uint8Array(stops()[0].params.packet).buffer).getUint32(4,true),8)
+  for(let i=0;i<4;i++){f.advance(1600);link.poll();await flush()}
+  assert.equal(stops().length,3)
+  assert.ok(link.pending)
+  link.receive(frame({run:8,revision:11,phase:3}));assert.equal(link.pending,null)
+  f.advance(2000);link.poll();await flush();assert.equal(stops().length,3)
+})
+
+test('a stop intent is retired if the phone has already started a different run',async()=>{
+  const f=fixture(),{link}=f
+  f.respond(req=>req.method==='IPSC_COMMAND'?{accepted:true}:frame({phase:2}))
+  link.connect();await flush();link.command(false);await flush()
+  const count=f.calls.filter(x=>x.method==='IPSC_COMMAND').length
+  link.receive(frame({run:8,revision:10,phase:2}));assert.equal(link.pending,null)
+  f.advance(2000);link.poll();await flush()
+  assert.equal(f.calls.filter(x=>x.method==='IPSC_COMMAND').length,count)
 })

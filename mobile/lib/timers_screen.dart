@@ -61,9 +61,10 @@ class TimersScreen extends StatelessWidget {
           children: [
             ListTile(
               title: Text(
-                link.device.platformName.isEmpty
-                    ? 'Таймер'
-                    : link.device.platformName,
+                session.preferences.timers[link.device.remoteId.str]?.name ??
+                    (link.device.platformName.isEmpty
+                        ? 'Таймер'
+                        : link.device.platformName),
               ),
               subtitle: Text(link.status),
               onTap: () => session.select(link.device.remoteId.str),
@@ -73,10 +74,22 @@ class TimersScreen extends StatelessWidget {
                     : Icons.bluetooth_disabled,
               ),
             ),
+            if (session.preferences.timers.containsKey(
+              link.device.remoteId.str,
+            ))
+              SwitchListTile(
+                title: const Text('Подключаться автоматически'),
+                value: session
+                    .preferences
+                    .timers[link.device.remoteId.str]!
+                    .autoConnect,
+                onChanged: (value) =>
+                    session.setAutoConnect(link.device.remoteId.str, value),
+              ),
             if (link.device.isConnected && link.notifications == null)
               FilledButton(
                 onPressed: session.busy ? null : () => _start(context, link),
-                child: const Text('Начать приём Special Pie'),
+                child: const Text('Определить протокол и начать приём'),
               ),
             TextButton(
               onPressed: session.busy
@@ -192,7 +205,7 @@ class TimersScreen extends StatelessWidget {
                 child: const Text('Повторить запуск фонового приёма'),
               ),
             const Text(
-              'Приём продолжается при переходе между экранами приложения. Новый старт завершает предыдущую серию. При потере соединения подключитесь вручную.',
+              'Протокол определяется по данным таймера. Сохранённые таймеры подключаются автоматически, если это включено. После ручного отключения автоподключение приостанавливается до следующего запуска приложения.',
             ),
             const SizedBox(height: 12),
             FilledButton.icon(
@@ -209,6 +222,27 @@ class TimersScreen extends StatelessWidget {
             if (session.searched && !session.scanning && session.found.isEmpty)
               const Text(
                 'Таймер не найден. Проверьте Bluetooth и отключите его от другого приложения.',
+              ),
+            if (session.links.isNotEmpty)
+              const Text(
+                'Мои таймеры',
+                style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+              ),
+            for (final timer in session.preferences.ordered)
+              if (session.links[timer.id] != null)
+                _device(context, session.links[timer.id]!),
+            for (final link in session.links.values.where(
+              (link) => !session.preferences.timers.containsKey(
+                link.device.remoteId.str,
+              ),
+            ))
+              _device(context, link),
+            if (session.found.any(
+              (r) => !session.links.containsKey(r.device.remoteId.str),
+            ))
+              const Text(
+                'Найденные устройства',
+                style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
               ),
             for (final result in session.found.where(
               (r) => !session.links.containsKey(r.device.remoteId.str),
@@ -227,7 +261,6 @@ class TimersScreen extends StatelessWidget {
                   child: const Text('Подключить'),
                 ),
               ),
-            for (final link in session.links.values) _device(context, link),
             ExpansionTile(
               title: const Text('Диагностика'),
               children: [
