@@ -1,0 +1,64 @@
+2026-10-24T13:18:37.2840315Z Flutter 3.47.8 • channel stable • https://github.com/flutter/flutter.git
+2026-10-24T13:18:37.2842805Z Tools • Dart 3.13.7 • DevTools 2.60.0
+2026-10-24T13:19:03.3687570Z   error - main.dart:142:7 - Undefined name 'd'. Try correcting the name to one that is defined, or defining the name. - undefined_identifier
+2026-10-24T13:19:03.3688964Z   error - main.dart:145:18 - Undefined name 'd'. Try correcting the name to one that is defined, or defining the name. - undefined_identifier
+2026-10-24T13:19:03.3691086Z   error - main.dart:161:19 - The method 'save' isn't defined for the type 'TrainingStore'. Try correcting the name to the name of an existing method, or defining a method named 'save'. - undefined_method
+2026-10-24T13:19:03.3693327Z   error - main.dart:230:23 - The named parameter 'child' is required, but there's no corresponding argument. Try adding the required argument. - missing_required_argument
+2026-10-24T13:19:03.3695116Z   error - main.dart:233:27 - 1 positional argument expected by 'confirm', but 0 found. Try adding the missing argument. - not_enough_positional_arguments
+2026-10-24T13:19:03.3696842Z   error - store.dart:255:9 - 1 positional argument expected by 'StoreException.new', but 0 found. Try adding the missing argument. - not_enough_positional_arguments
+2026-10-24T13:19:03.3698692Z   error - store.dart:259:5 - Expected a class member. Try placing this code inside a class member. - expected_class_member
+2026-10-24T13:19:03.3700049Z   error - store.dart:259:9 - Expected an identifier. - missing_identifier
+2026-10-24T13:19:03.3701321Z   error - store.dart:259:9 - Methods must have an explicit list of parameters. Try adding a parameter list. - missing_method_parameters
+2026-10-24T13:19:03.3702857Z   error - store.dart:260:14 - The await expression can only be used in an async function. Try marking the function body with either 'async' or 'async*'. - await_in_wrong_context
+2026-10-24T13:19:03.3704513Z   error - store.dart:260:26 - Undefined name 'file'. Try correcting the name to one that is defined, or defining the name. - undefined_identifier
+2026-10-24T13:19:03.3705376Z   error - store.dart:261:7 - Expected a class member. Try placing this code inside a class member. - expected_class_member
+2026-10-24T13:19:03.3706032Z   error - store.dart:261:13 - Expected an identifier. - missing_identifier
+2026-10-24T13:19:03.3706798Z   error - store.dart:263:7 - 1 positional argument expected by 'StoreException.new', but 0 found. Try adding the missing argument. - not_enough_positional_arguments
+2026-10-24T13:19:03.3708092Z   error - store.dart:277:11 - The type of 'future' can't be inferred because it depends on itself through the cycle: _pending, future. Try adding an explicit type to one or more of the variables in the cycle in order to break the cycle. - top_level_cycle
+2026-10-24T13:19:03.3710542Z   error - store.dart:277:41 - The function 'action' isn't defined. Try importing the library that defines 'action', correcting the name to the name of an existing function, or defining a function named 'action'. - undefined_function
+2026-10-24T13:19:03.3713177Z   error - store.dart:278:5 - The type of '_pending' can't be inferred because it depends on itself through the cycle: _pending, future. Try adding an explicit type to one or more of the variables in the cycle in order to break the cycle. - top_level_cycle
+2026-10-24T13:19:03.3715377Z   error - store.dart:278:5 - Variables must be declared using the keywords 'const', 'final', 'var' or a type name. Try adding the name of the type of the variable or the keyword 'var'. - missing_const_final_var_or_type
+2026-10-24T13:19:03.3716657Z   error - store.dart:279:5 - 'return' can't be used as an identifier because it's a keyword. Try renaming this to be an identifier that isn't a keyword. - expected_identifier_but_got_keyword
+2026-10-24T13:19:03.3717439Z   error - store.dart:279:5 - Expected to find ';'. - expected_token
+2026-10-24T13:19:03.3718312Z   error - store.dart:279:5 - Variables must be declared using the keywords 'const', 'final', 'var' or a type name. Try adding the name of the type of the variable or the keyword 'var'. - missing_const_final_var_or_type
+2026-10-24T13:19:03.3719611Z   error - store.dart:279:12 - The name 'future' is already defined. Try renaming one of the declarations. - duplicate_definition
+2026-10-24T13:19:03.3721190Z   error - store.dart:279:12 - Variables must be declared using the keywords 'const', 'final', 'var' or a type name. Try adding the name of the type of the variable or the keyword 'var'. - missing_const_final_var_or_type
+2026-10-24T13:19:03.3722414Z   error - store.dart:280:3 - Expected a method, getter, setter or operator declaration. This appears to be incomplete code. Try removing it or completing it. - expected_executable
+2026-10-24T13:19:03.3723819Z   error - store.dart:282:16 - The body might complete normally, causing 'null' to be returned, but the return type, 'Future<void>', is a potentially non-nullable type. Try adding either a return or a throw statement at the end. - body_might_complete_normally
+2026-10-24T13:19:03.3725192Z   error - store.dart:294:22 - The await expression can only be used in an async function. Try marking the function body with either 'async' or 'async*'. - await_in_wrong_context
+2026-10-24T13:19:03.3726704Z   error - store.dart:294:28 - The function '_directory' isn't defined. Try importing the library that defines '_directory', correcting the name to the name of an existing function, or defining a function named '_directory'. - undefined_function
+2026-10-24T13:19:03.3727997Z   error - store.dart:296:11 - The await expression can only be used in an async function. Try marking the function body with either 'async' or 'async*'. - await_in_wrong_context
+2026-10-24T13:19:03.3729142Z   error - store.dart:298:11 - The await expression can only be used in an async function. Try marking the function body with either 'async' or 'async*'. - await_in_wrong_context
+2026-10-24T13:19:03.3730673Z   error - store.dart:298:17 - The function '_read' isn't defined. Try importing the library that defines '_read', correcting the name to the name of an existing function, or defining a function named '_read'. - undefined_function
+2026-10-24T13:19:03.3731909Z   error - store.dart:305:9 - 1 positional argument expected by 'StoreException.new', but 0 found. Try adding the missing argument. - not_enough_positional_arguments
+2026-10-24T13:19:03.3732976Z   error - store.dart:307:7 - The await expression can only be used in an async function. Try marking the function body with either 'async' or 'async*'. - await_in_wrong_context
+2026-10-24T13:19:03.3734085Z   error - store.dart:308:6 - Expected a method, getter, setter or operator declaration. This appears to be incomplete code. Try removing it or completing it. - expected_executable
+2026-10-24T13:19:03.3734928Z   error - store.dart:308:7 - Unexpected text ';'. Try removing the text. - unexpected_token
+2026-10-24T13:19:03.3735772Z   error - store.dart:309:3 - Expected a method, getter, setter or operator declaration. This appears to be incomplete code. Try removing it or completing it. - expected_executable
+2026-10-24T13:19:03.3736866Z   error - store.dart:312:20 - The await expression can only be used in an async function. Try marking the function body with either 'async' or 'async*'. - await_in_wrong_context
+2026-10-24T13:19:03.3738323Z   error - store.dart:312:26 - The function '_directory' isn't defined. Try importing the library that defines '_directory', correcting the name to the name of an existing function, or defining a function named '_directory'. - undefined_function
+2026-10-24T13:19:03.3740063Z   error - store.dart:314:5 - 'try' can't be used as an identifier because it's a keyword. Try renaming this to be an identifier that isn't a keyword. - expected_identifier_but_got_keyword
+2026-10-24T13:19:03.3741135Z   error - store.dart:314:5 - Functions must have an explicit list of parameters. Try adding a parameter list. - missing_function_parameters
+2026-10-24T13:19:03.3742158Z   error - store.dart:315:7 - 'catch' can't be used as an identifier because it's a keyword. Try renaming this to be an identifier that isn't a keyword. - expected_identifier_but_got_keyword
+2026-10-24T13:19:03.3743320Z   error - store.dart:318:5 - 'if' can't be used as an identifier because it's a keyword. Try renaming this to be an identifier that isn't a keyword. - expected_identifier_but_got_keyword
+2026-10-24T13:19:03.3744610Z   error - store.dart:318:9 - Undefined name 'await' in function body not marked with 'async'. Try correcting the name to one that is defined, defining the name, or adding 'async' to the enclosing function body. - undefined_identifier_await
+2026-10-24T13:19:03.3745606Z   error - store.dart:318:22 - Expected to find ')'. - expected_token
+2026-10-24T13:19:03.3746381Z   error - store.dart:319:7 - The await expression can only be used in an async function. Try marking the function body with either 'async' or 'async*'. - await_in_wrong_context
+2026-10-24T13:19:03.3747662Z   error - store.dart:323:5 - Undefined name 'await' in function body not marked with 'async'. Try correcting the name to one that is defined, defining the name, or adding 'async' to the enclosing function body. - undefined_identifier_await
+2026-10-24T13:19:03.3748987Z   error - store.dart:323:11 - The name '_atomic' is already defined. Try renaming one of the declarations. - duplicate_definition
+2026-10-24T13:19:03.3751194Z   error - store.dart:323:39 - The prefix 'data' can't be used here because it's shadowed by a local declaration. Try renaming either the prefix or the local declaration. - prefix_shadowed_by_local_declaration
+2026-10-24T13:19:03.3752078Z   error - store.dart:323:50 - Expected an identifier. - missing_identifier
+2026-10-24T13:19:03.3752665Z   error - store.dart:323:54 - A function body must be provided. Try adding a function body. - missing_function_body
+2026-10-24T13:19:03.3753632Z   error - store.dart:324:5 - 'return' can't be used as an identifier because it's a keyword. Try renaming this to be an identifier that isn't a keyword. - expected_identifier_but_got_keyword
+2026-10-24T13:19:03.3754447Z   error - store.dart:324:5 - Expected to find ';'. - expected_token
+2026-10-24T13:19:03.3755056Z   error - store.dart:324:5 - The name 'return' is already defined. Try renaming one of the declarations. - duplicate_definition
+2026-10-24T13:19:03.3756510Z   error - store.dart:324:5 - Variables must be declared using the keywords 'const', 'final', 'var' or a type name. Try adding the name of the type of the variable or the keyword 'var'. - missing_const_final_var_or_type
+2026-10-24T13:19:03.3757551Z   error - store.dart:324:12 - The name 'data' is already defined. Try renaming one of the declarations. - duplicate_definition
+2026-10-24T13:19:03.3759015Z   error - store.dart:324:12 - Variables must be declared using the keywords 'const', 'final', 'var' or a type name. Try adding the name of the type of the variable or the keyword 'var'. - missing_const_final_var_or_type
+2026-10-24T13:19:03.3760518Z   error - store.dart:325:3 - Expected a method, getter, setter or operator declaration. This appears to be incomplete code. Try removing it or completing it. - expected_executable
+2026-10-24T13:19:03.3761806Z   error - store.dart:325:4 - Expected a method, getter, setter or operator declaration. This appears to be incomplete code. Try removing it or completing it. - expected_executable
+2026-10-24T13:19:03.3762657Z   error - store.dart:325:5 - Unexpected text ';'. Try removing the text. - unexpected_token
+2026-10-24T13:19:03.3763498Z   error - store.dart:326:1 - Expected a method, getter, setter or operator declaration. This appears to be incomplete code. Try removing it or completing it. - expected_executable
+2026-10-24T13:19:03.3764478Z warning - store.dart:223:7 - The declaration '<unnamed>' isn't referenced. Try removing the declaration of '<unnamed>'. - unused_element
+2026-10-24T13:19:03.3765317Z warning - store.dart:323:11 - The declaration '_atomic' isn't referenced. Try removing the declaration of '_atomic'. - unused_element
+2026-10-24T13:19:03.3781214Z 78 issues found.
