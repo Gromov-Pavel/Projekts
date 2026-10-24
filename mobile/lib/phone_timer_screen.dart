@@ -8,9 +8,11 @@ import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 
 import 'live_shot_detector.dart';
+import 'watch_bridge.dart';
 
 class PhoneTimerScreen extends StatefulWidget {
-  const PhoneTimerScreen({super.key, required this.onSave});
+  const PhoneTimerScreen({super.key, required this.onSave, this.watchBridge});
+  final WatchBridge? watchBridge;
   final Future<bool> Function(List<double> times, String source) onSave;
 
   @override
@@ -38,6 +40,8 @@ class _PhoneTimerScreenState extends State<PhoneTimerScreen>
   bool _saved = false, _saving = false, _allowPop = false, _previewing = false;
   bool _clipped = false, _loaded = false;
   int _token = 0;
+  bool _watchStarted = false, _watchFailed = false;
+  bool _foreground = true;
   String _status = 'Готов';
   String _volume = 'Громкость медиа: неизвестна';
 
@@ -45,6 +49,7 @@ class _PhoneTimerScreenState extends State<PhoneTimerScreen>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    widget.watchBridge?.attachPhone(_watchCommand);
     unawaited(_load());
     unawaited(_readVolume());
   }
@@ -82,7 +87,54 @@ class _PhoneTimerScreenState extends State<PhoneTimerScreen>
     } catch (_) {
       // Invalid or unavailable settings fall back to safe defaults.
     }
-    if (mounted) setState(() => _loaded = true);
+    if (mounted) {
+      setState(() => _loaded = true);
+      _publishWatch();
+    }
+  }
+
+  void _publishWatch({bool newRun = false}) {
+    widget.watchBridge?.phoneState(
+      !_foreground || _watchFailed
+          ? WatchPhase.unavailable
+          : _active
+          ? (_running ? WatchPhase.running : WatchPhase.preparing)
+          : _watchStarted
+          ? WatchPhase.finished
+          : WatchPhase.idle,
+      _watchStarted ? _shots : [],
+      canControl:
+          _foreground &&
+          _loaded &&
+          !_testing &&
+          !_saving &&
+          !_previewing &&
+          (_active || _shots.isEmpty || _saved),
+      newRun: newRun,
+      failed: _watchFailed,
+    );
+  }
+
+  Future<void> _watchCommand(bool start) async {
+    if (!mounted ||
+        !_foreground ||
+        !_loaded ||
+        _saving ||
+        _testing ||
+        _previewing) {
+      throw StateError('Откройте готовый телефонный таймер');
+    }
+    if (start) {
+      if (_active || (_shots.isNotEmpty && !_saved)) {
+        throw StateError('Сначала сохраните предыдущую серию на телефоне');
+      }
+      unawaited(_start());
+    } else {
+      if (!_active) throw StateError('Таймер уже остановлен');
+      final hadShots = _running;
+      await _stop('Завершено с часов');
+      if (hadShots) await _save();
+    }
   }
 
   Future<void> _persist() async {
@@ -209,9 +261,11 @@ class _PhoneTimerScreenState extends State<PhoneTimerScreen>
             p < 0 ||
             p > 600)) {
       setState(() => _status = 'Задержка 0–60 с; PAR 0–600 с (0 — вручную)');
+      _watchFailed = true;
+      _publishWatch();
       return;
     }
-    if (!test && !await _discard()) return;
+    if (!test && _shots.isNotEmpty && !_saved && !await _discard()) return;
     if (!mounted || _active) return;
     final token = ++_token;
     setState(() {
@@ -220,6 +274,9 @@ class _PhoneTimerScreenState extends State<PhoneTimerScreen>
       _clipped = false;
       _status = 'Подготовка микрофона…';
     });
+    _watchStarted = false;
+    _watchFailed = false;
+    _publishWatch(newRun: true);
     try {
       final permission = await Permission.microphone.request();
       if (!mounted || token != _token) return;
@@ -245,6 +302,7 @@ class _PhoneTimerScreenState extends State<PhoneTimerScreen>
               _clipped = _clipped || frame.clipped;
               if (shot != null) _shots.add(shot);
             });
+            if (shot != null) _publishWatch();
           } catch (_) {
             unawaited(_stop('Неверные данные микрофона. Повторите запуск.'));
           }
@@ -281,6 +339,8 @@ class _PhoneTimerScreenState extends State<PhoneTimerScreen>
         _running = true;
         _status = 'СТАРТ';
       });
+      _watchStarted = true;
+      _publishWatch();
       _ticker = Timer.periodic(const Duration(milliseconds: 50), (_) {
         if (mounted) setState(() {});
       });
@@ -291,6 +351,7 @@ class _PhoneTimerScreenState extends State<PhoneTimerScreen>
         },
       );
     } catch (e) {
+      _watchFailed = true;
       if (mounted && token == _token) await _stop('Не удалось запустить: $e');
     }
   }
@@ -302,6 +363,10 @@ class _PhoneTimerScreenState extends State<PhoneTimerScreen>
   }
 
   Future<void> _stop(String message) async {
+    if (message.startsWith('Ошибка') ||
+        message.startsWith('Неверные') ||
+        message.startsWith('Микрофон остановлен'))
+      _watchFailed = true;
     ++_token;
     _running = false;
     _detector.stop();
@@ -324,12 +389,14 @@ class _PhoneTimerScreenState extends State<PhoneTimerScreen>
         _level = 0;
         _status = message;
       });
+      _publishWatch();
     }
   }
 
   Future<void> _save() async {
     if (_active || _saving || _saved || _shots.isEmpty) return;
     setState(() => _saving = true);
+    _publishWatch();
     try {
       final saved = await widget.onSave(
         List<double>.of(_shots),
@@ -347,6 +414,7 @@ class _PhoneTimerScreenState extends State<PhoneTimerScreen>
       if (mounted) setState(() => _status = 'Не удалось сохранить: $e');
     } finally {
       if (mounted) setState(() => _saving = false);
+      if (mounted) _publishWatch();
     }
   }
 
@@ -363,14 +431,18 @@ class _PhoneTimerScreenState extends State<PhoneTimerScreen>
     if (state == AppLifecycleState.paused ||
         state == AppLifecycleState.detached ||
         state == AppLifecycleState.hidden) {
+      _foreground = false;
       unawaited(_stop('Остановлено при сворачивании'));
     } else if (state == AppLifecycleState.resumed) {
+      _foreground = true;
+      _publishWatch();
       unawaited(_readVolume());
     }
   }
 
   @override
   void dispose() {
+    widget.watchBridge?.detachPhone();
     WidgetsBinding.instance.removeObserver(this);
     ++_token;
     _ticker?.cancel();

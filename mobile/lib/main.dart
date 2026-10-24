@@ -8,6 +8,8 @@ import 'timers_screen.dart';
 import 'timer_session.dart';
 import 'training_live.dart';
 import 'phone_timer_screen.dart';
+import 'watch_bridge.dart';
+import 'watch_screen.dart';
 
 import 'domain.dart';
 import 'store.dart';
@@ -59,6 +61,8 @@ class _TrainingHomeState extends State<TrainingHome> {
   late final store = widget.store ?? TrainingStore();
   AppData? data;
   TimerSession? _timerSession;
+  WatchBridge? _watchBridge;
+  WatchBridge get watchBridge => _watchBridge ??= WatchBridge(timerSession);
   Future<bool> _timerSaveQueue = Future.value(true);
   TimerSession get timerSession => _timerSession ??= TimerSession(
     onImport: (times, source) {
@@ -87,6 +91,7 @@ class _TrainingHomeState extends State<TrainingHome> {
   );
   @override
   void dispose() {
+    _watchBridge?.dispose();
     _timerSession?.dispose();
     super.dispose();
   }
@@ -484,6 +489,7 @@ class _TrainingHomeState extends State<TrainingHome> {
                             context,
                             MaterialPageRoute(
                               builder: (_) => PhoneTimerScreen(
+                                watchBridge: watchBridge,
                                 onSave: (times, source) => change(
                                   (d) => d.runs.add(
                                     Run(
@@ -1658,6 +1664,14 @@ class _TrainingHomeState extends State<TrainingHome> {
           ),
         ),
         child: const Text('Подключить таймер'),
+      ),
+      OutlinedButton.icon(
+        onPressed: () => Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => WatchScreen(bridge: watchBridge)),
+        ),
+        icon: const Icon(Icons.watch),
+        label: const Text('Подключить часы'),
       ),
     ]),
     section('Локальные данные', [

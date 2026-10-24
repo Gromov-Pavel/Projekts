@@ -29,8 +29,8 @@ class TimerConnectionService : Service() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         val builder = if (Build.VERSION.SDK_INT >= 26) Notification.Builder(this, channelId) else Notification.Builder(this)
         val notification = builder.setSmallIcon(android.R.drawable.stat_sys_data_bluetooth)
-            .setContentTitle("PACE · таймер подключён")
-            .setContentText("Принимаем выстрелы. Отключить таймер можно в приложении.")
+            .setContentTitle("IPSC тренировОчка · Bluetooth")
+            .setContentText("Связь с таймерами и часами включена. Управление — в приложении.")
             .setContentIntent(openApp).setOngoing(true).setOnlyAlertOnce(true)
             .setCategory(Notification.CATEGORY_SERVICE).build()
         if (Build.VERSION.SDK_INT >= 29) {

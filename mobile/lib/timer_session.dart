@@ -58,6 +58,7 @@ class TimerSession extends ChangeNotifier {
   bool get mounted => !_disposed;
   String? selectedId;
   bool serviceRunning = false;
+  bool watchBridgeRunning = false;
   String backgroundStatus = 'Фоновый приём ещё не запущен.';
   final String _sessionId = DateTime.now().microsecondsSinceEpoch.toString();
   void _change(VoidCallback change) {
@@ -421,7 +422,7 @@ class TimerSession extends ChangeNotifier {
   Future<void> refreshBackgroundService() => _syncService();
   Future<void> _syncService() {
     _serviceQueue = _serviceQueue.then((_) async {
-      final needed = connectedCount > 0 && !_disposed;
+      final needed = (connectedCount > 0 || watchBridgeRunning) && !_disposed;
       if (needed == serviceRunning) return;
       try {
         if (needed) {
@@ -431,7 +432,9 @@ class TimerSession extends ChangeNotifier {
               31;
           if (sdk >= 33 &&
               !(await Permission.notification.request()).isGranted) {
-            throw StateError('Разрешите уведомления IPSC тренировОчка для фонового приёма.');
+            throw StateError(
+              'Разрешите уведомления IPSC тренировОчка для фонового приёма.',
+            );
           }
         }
         await const MethodChannel(

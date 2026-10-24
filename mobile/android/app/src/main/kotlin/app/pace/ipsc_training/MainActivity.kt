@@ -19,9 +19,11 @@ class MainActivity : FlutterActivity() {
     private var activityStarted = false
     private lateinit var videoExporter: VideoAnalysisExporter
     private lateinit var videoPreview: VideoPreview
+    private var watchGatt: WatchGatt? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        watchGatt = WatchGatt(this, flutterEngine.dartExecutor.binaryMessenger)
         phoneAudio = PhoneTimerAudio(this, flutterEngine.dartExecutor.binaryMessenger)
         videoExporter = VideoAnalysisExporter(this)
         videoPreview = VideoPreview(this)
@@ -58,6 +60,12 @@ class MainActivity : FlutterActivity() {
                 }
             }.start()
         }
+    }
+
+    override fun cleanUpFlutterEngine(flutterEngine: FlutterEngine) {
+        watchGatt?.close()
+        watchGatt = null
+        super.cleanUpFlutterEngine(flutterEngine)
     }
 
     override fun onStart() {

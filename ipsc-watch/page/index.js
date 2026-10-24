@@ -1,57 +1,43 @@
 import { replace } from '@zos/router'
-import { initialState, acceptSnapshot, metrics, seconds, keepAwake } from '../lib/session'
+import { PhoneLink } from '../lib/phone'
 import { applyScreenPolicy, releaseScreen } from '../lib/screen'
 import { getMode } from '../lib/settings'
 import { label, button, update } from '../lib/ui'
 
-const DEMO = [1250, 1640, 2020, 2460, 2830, 3250]
 Page({
-  onInit() { this.state = initialState(); this.timer = null; this.policy = null },
+  onInit() {
+    this.policy = null
+    this.link = new PhoneLink(() => { if (this.status) this.render() })
+  },
   build() {
     label('Тренировка', 90, 24, 300, 34, 26)
-    this.status = label('Нет подключения', 65, 68, 350, 28, 20, 0xffbb66)
+    this.status = label('Нет подключения', 50, 68, 380, 32, 19, 0xffbb66)
     this.total = label('0.00', 35, 110, 410, 112, 92)
     label('ВРЕМЯ, С', 130, 218, 220, 24, 18, 0x97a5b4)
     label('СПЛИТ, С', 55, 262, 180, 26, 18, 0x97a5b4)
     label('ВЫСТРЕЛЫ', 245, 262, 180, 26, 18, 0x97a5b4)
     this.split = label('—', 55, 292, 180, 54, 40)
     this.count = label('0', 245, 292, 180, 54, 40)
-    this.demoButton = button('Демо', 72, 365, 158, 52, () => this.toggleDemo())
-    button('Настройки', 245, 365, 163, 52, () => {
-      this.stopDemo(); replace({ url: 'page/settings' })
+    this.action = button('Подключить', 100, 354, 280, 58, () => {
+      if (!this.link.fresh()) { this.link.connect(); return }
+      const state = this.link.state
+      if (state.phone && state.control && state.phase !== 4) this.link.command(![1, 2].includes(state.phase))
     })
+    button('Связь', 100, 416, 125, 38, () => this.link.connect())
+    button('Настройки', 240, 416, 140, 38, () => replace({url:'page/settings'}))
     this.render()
   },
   render() {
-    const m = metrics(this.state)
-    update(this.total, seconds(m.total)); update(this.count, String(m.count))
-    update(this.split, m.split === null ? '—' : seconds(m.split))
-    update(this.status, this.state.source === 'demo'
-      ? (this.state.phase === 'finished' ? 'ДЕМО · завершено' : 'ДЕМО · выстрелы')
-      : 'Нет подключения')
-    const awake = keepAwake(getMode(), this.state.phase)
+    const state = this.link.state, fresh = this.link.fresh()
+    update(this.total, ((state?.total || 0) / 1000).toFixed(2))
+    update(this.count, String(state?.count || 0))
+    update(this.split, state?.split == null ? '—' : (state.split / 1000).toFixed(2))
+    update(this.status, this.link.message)
+    update(this.action, !fresh ? 'Подключить' : state.revision === 0 ? 'Сверьте код' : this.link.pending ? 'Ожидание…'
+      : state.phase === 4 ? 'См. телефон' : !state.phone ? 'Старт на таймере' : !state.control ? 'См. телефон'
+      : state.phase === 1 ? 'Отмена' : state.phase === 2 ? 'Завершить' : 'Старт')
+    const awake = getMode() === 'training' || (fresh && [1, 2].includes(state?.phase))
     if (this.policy !== awake) { applyScreenPolicy(awake); this.policy = awake }
   },
-  toggleDemo() {
-    if (this.timer !== null) { this.stopDemo(); return }
-    this.state = acceptSnapshot(initialState(), { version: 1, runId: 'demo',
-      sequence: 0, phase: 'running', source: 'demo', shots: [] })
-    update(this.demoButton, 'Стоп демо'); this.render()
-    let count = 0
-    this.timer = setInterval(() => {
-      count += 1
-      this.state = acceptSnapshot(this.state, { version: 1, runId: 'demo',
-        sequence: count, phase: count === DEMO.length ? 'finished' : 'running',
-        source: 'demo', shots: DEMO.slice(0, count) })
-      this.render()
-      if (count === DEMO.length) { clearInterval(this.timer); this.timer = null; update(this.demoButton, 'Ещё демо') }
-    }, 800)
-  },
-  stopDemo() {
-    if (this.timer !== null) { clearInterval(this.timer); this.timer = null }
-    if (this.state.phase === 'running') this.state = { ...this.state, phase: 'finished' }
-    if (this.demoButton) update(this.demoButton, 'Демо')
-    if (this.status) this.render()
-  },
-  onDestroy() { if (this.timer !== null) clearInterval(this.timer); releaseScreen() }
+  onDestroy() { this.link.close(); releaseScreen() }
 })

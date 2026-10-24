@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:ipsc_training/phone_timer_screen.dart';
+import 'package:ipsc_training/watch_bridge.dart';
+import 'package:ipsc_training/timer_session.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -30,8 +32,8 @@ void main() {
     messenger.setMockMethodCallHandler(audio, (call) async {
       calls.add(call.method);
       if (call.method == 'beep') {
-        expect(call.arguments['durationMs'], 600);
-        expect(call.arguments['gain'], 1);
+        expectSync(call.arguments['durationMs'], 600);
+        expectSync(call.arguments['gain'], 1);
         return {
           'at': 100.0,
           'durationMs': 600,
@@ -236,6 +238,53 @@ void main() {
       expect(tester.takeException(), isNull);
       await tester.pumpWidget(const SizedBox());
       await tester.pump();
+    },
+  );
+  testWidgets(
+    'approved watch starts and finishes phone timer; background commands are rejected',
+    (tester) async {
+      final bridge = WatchBridge(TimerSession(onImport: (_, _) async => true));
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(WatchBridge.channel, (_) async => null);
+      bridge.selectPhone(true);
+      await tester.pumpWidget(
+        MaterialApp(
+          home: PhoneTimerScreen(
+            onSave: (_, _) async => true,
+            watchBridge: bridge,
+          ),
+        ),
+      );
+      await ready(tester);
+      bridge.enabled = bridge.approved = true;
+      await tester.runAsync(
+        () => bridge.handleCommand({'run': bridge.run, 'op': 1}),
+      );
+      await tester.pump(const Duration(milliseconds: 1));
+      await ready(tester);
+      await tester.pump();
+      expect(calls, contains('micStart'));
+      expect(calls, contains('beep'));
+      expect(bridge.phase, WatchPhase.running);
+      await tester.runAsync(
+        () => bridge.handleCommand({'run': bridge.run, 'op': 2}),
+      );
+      await tester.pump();
+      expect(bridge.phase, WatchPhase.finished);
+      expect(calls, contains('micStop'));
+      final starts = calls.where((c) => c == 'micStart').length;
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+      await tester.pump();
+      await tester.runAsync(
+        () => bridge.handleCommand({'run': bridge.run, 'op': 1}),
+      );
+      await tester.pump();
+      expect(calls.where((c) => c == 'micStart').length, starts);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await tester.pumpWidget(const SizedBox());
+      bridge.dispose();
+      await tester.pump();
+      expect(tester.takeException(), isNull);
     },
   );
 }
