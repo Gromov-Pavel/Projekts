@@ -12,6 +12,7 @@ import 'package:ipsc_training/video_analysis.dart';
 void main() {
   List<AudioFrame> fixture(String name) {
     final data = jsonDecode(
+      File('test/fixtures/audio/$name.json')
           .readAsStringSync(),
     ) as Map<String, dynamic>;
     return (data['frames'] as List)
@@ -29,13 +30,13 @@ void main() {
   test('development real features retain quiet and masked stable spectral candidates', () {
     // Spectral intervals inspected during development, not labelled beep ground truth.
     for (final expected in {
-      'IMG_0930.MOV': .9,
-      'IMG_0935.MOV': 1.02,
-      'IMG_0951.MOV': 2.06,
-      'IMG_1976.MOV': 1.0,
-      '20240706_093640.mp4': 1.241604,
-      '20240706_121755.mp4': 2.08,
-      '20240706_135901.mp4': 2.421604,
+      'sample01': .9,
+      'sample02': 1.02,
+      'sample03': 2.06,
+      'sample04': 1.0,
+      'sample05': 1.241604,
+      'sample06': 2.08,
+      'sample07': 2.421604,
     }.entries) {
       final result = analyzeAudio(fixture(expected.key));
       expect(result.beep, closeTo(expected.value, .021), reason: expected.key);
@@ -44,7 +45,7 @@ void main() {
     }
     // The earlier voiced/drifting 1.45–1.65 kHz segment is not the stable 2.3 kHz interval.
     expect(
-      analyzeAudio(fixture('IMG_0951.MOV')).candidates
+      analyzeAudio(fixture('sample03')).candidates
           .where((b) => b.time < 1.2),
       isEmpty,
     );
@@ -67,14 +68,14 @@ void main() {
       expect(analyzeAudio(frames).beep, closeTo(.2, .001));
     }
     // Promoted from the initial holdout after inspecting the harmonic counterexample.
-    final real = analyzeAudio(fixture('IMG_5604.MOV'));
+    final real = analyzeAudio(fixture('sample08'));
     expect(real.beep, closeTo(2.12, .021));
   });
 
   test(
     'attenuation preserves timing without requiring the old absolute loudness',
     () {
-      final frames = fixture('IMG_0935.MOV')
+      final frames = fixture('sample02')
           .map((f) => AudioFrame(f.time, f.rms / 20, f.tone, f.frequencyHz))
           .toList();
       expect(analyzeAudio(frames).beep, closeTo(1.02, .021));
@@ -82,7 +83,7 @@ void main() {
   );
 
   test('tone at media boundary is a clipped candidate and never a precise automatic zero', () {
-    final result = analyzeAudio(fixture('IMG_0937.MOV'));
+    final result = analyzeAudio(fixture('sample09'));
     expect(result.beep, isNull);
     expect(result.candidates.single.atBoundary, isTrue);
     expect(result.candidates.single.time, 0);

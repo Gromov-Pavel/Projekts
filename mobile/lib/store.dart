@@ -220,6 +220,7 @@ class StoreException implements Exception {
   String toString() => message;
 }
 
+/// One store per app. Writes are serialized and snapshots are taken when save is called.
 class TrainingStore {
   final Directory? directory;
   Future<void> _pending = Future.value();
@@ -251,7 +252,9 @@ class TrainingStore {
     final folder = await _directory();
     final file = File('${folder.path}/training.json');
     if (!await file.exists()) {
+      if (await File('${folder.path}/training.backup.json').exists()) {
         throw StoreException(
+          'Primary data is missing. Restore the backup explicitly.',
         );
       }
       return AppData();
@@ -260,6 +263,7 @@ class TrainingStore {
       return await _read(file);
     } catch (error) {
       throw StoreException(
+        'Cannot load saved data: $error. Original preserved; restore backup explicitly if available.',
       );
     }
   }
@@ -274,6 +278,7 @@ class TrainingStore {
     }
   }
 
+  Future<T> _serial<T>(Future<T> Function() action) {
     final future = _pending.then((_) => action());
     _pending = future.then<void>((_) {}, onError: (Object _, StackTrace _) {});
     return future;
@@ -291,8 +296,10 @@ class TrainingStore {
     } catch (error) {
       return Future.error(error);
     }
+    return _serial(() async {
       final folder = await _directory();
       final primary = File('${folder.path}/training.json');
+      final backup = File('${folder.path}/training.backup.json');
       if (await primary.exists()) {
         try {
           await _read(primary);
@@ -301,7 +308,10 @@ class TrainingStore {
             'Saved data is invalid; refusing to overwrite it: $error',
           );
         }
+        await _atomic(backup, await primary.readAsString());
+      } else if (await backup.exists()) {
         throw StoreException(
+          'Primary data is missing; restore backup before saving.',
         );
       }
       await _atomic(primary, text);
@@ -309,10 +319,14 @@ class TrainingStore {
   }
 
   /// Explicit recovery preserves the broken original beside the recovered file.
+  Future<AppData> restoreBackup() => _serial(() async {
     final folder = await _directory();
+    final backup = File('${folder.path}/training.backup.json');
     late final AppData data;
     try {
+      data = await _read(backup);
     } catch (error) {
+      throw StoreException('Backup cannot be restored: $error');
     }
     final primary = File('${folder.path}/training.json');
     if (await primary.exists()) {

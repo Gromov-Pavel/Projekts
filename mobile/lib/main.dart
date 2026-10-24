@@ -139,6 +139,7 @@ class _TrainingHomeState extends State<TrainingHome> {
 
   Future<void> load({bool restore = false}) async {
     try {
+      final d = restore ? await store.restoreBackup() : await store.load();
       d.selectFirstPasses();
       if (mounted) {
         setState(() {
@@ -230,10 +231,12 @@ class _TrainingHomeState extends State<TrainingHome> {
                       OutlinedButton(
                         onPressed: () async {
                           if (await confirm(
+                            'Восстановить резервную копию? Повреждённый файл будет сохранён отдельно.',
                           )) {
                             load(restore: true);
                           }
                         },
+                        child: const Text('Восстановить резервную копию'),
                       ),
                     ],
                   ),

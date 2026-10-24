@@ -1,9 +1,61 @@
 {
-  "configVersion":"v3",
-  "app":{"appId":1100001,"appName":"IPSC тренировОчка","appType":"app","version":{"code":1,"name":"0.1.0"},"vender":"Pavel Gromov","description":"Экран стрелкового таймера. Первая версия с демоданными."},
-  "runtime":{"apiVersion":{"minVersion":"3.0.0","target":"3.0.0","compatible":"3.0.0"}},
-  "permissions":["device:os.local_storage"],
-  "targets":{"trex3pro48":{"module":{"page":{"pages":["page/index","page/settings"]}},"platforms":[{"name":"T-Rex 3 Pro 48mm","deviceSource":10551552},{"name":"T-Rex 3 Pro 48mm","deviceSource":10551553},{"name":"T-Rex 3 Pro 48mm","deviceSource":10551555}],"designWidth":480}},
-  "i18n":{"ru-RU":{"appName":"IPSC тренировОчка"},"en-US":{"appName":"IPSC тренировОчка"}},
-  "defaultLanguage":"ru-RU"
+  "configVersion": "v3",
+  "app": {
+    "appId": 1100001,
+    "appName": "IPSC тренировОчка",
+    "appType": "app",
+    "version": {
+      "code": 1,
+      "name": "0.1.0"
+    },
+    "vender": "Pavel Gromov",
+    "description": "Экран стрелкового таймера. Первая версия с демоданными.",
+    "icon": "icon.png"
+  },
+  "runtime": {
+    "apiVersion": {
+      "minVersion": "3.0.0",
+      "target": "3.0.0",
+      "compatible": "3.0.0"
+    }
+  },
+  "permissions": [
+    "device:os.local_storage"
+  ],
+  "targets": {
+    "trex3pro48": {
+      "module": {
+        "page": {
+          "pages": [
+            "page/index",
+            "page/settings"
+          ]
+        }
+      },
+      "platforms": [
+        {
+          "name": "T-Rex 3 Pro 48mm",
+          "deviceSource": 10551552
+        },
+        {
+          "name": "T-Rex 3 Pro 48mm",
+          "deviceSource": 10551553
+        },
+        {
+          "name": "T-Rex 3 Pro 48mm",
+          "deviceSource": 10551555
+        }
+      ],
+      "designWidth": 480
+    }
+  },
+  "i18n": {
+    "ru-RU": {
+      "appName": "IPSC тренировОчка"
+    },
+    "en-US": {
+      "appName": "IPSC тренировОчка"
+    }
+  },
+  "defaultLanguage": "ru-RU"
 }

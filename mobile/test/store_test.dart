@@ -99,6 +99,7 @@ void main() {
   });
 
   test(
+    'first load is empty; writes serialize and snapshot immediately',
     () async {
       expect((await store.load()).runs, isEmpty);
       final first = people('first');
@@ -107,6 +108,7 @@ void main() {
       final b = store.save(people('second'));
       await Future.wait([a, b]);
       expect((await store.load()).shooters.single.name, 'second');
+      expect((await store.restoreBackup()).shooters.single.name, 'first');
     },
   );
   test('corruption is preserved; save refuses; recovery is explicit', () async {
@@ -120,6 +122,7 @@ void main() {
       throwsA(isA<StoreException>()),
     );
     expect(await primary.readAsString(), '{broken');
+    expect((await store.restoreBackup()).shooters.single.name, 'first');
     expect((await store.load()).shooters.single.name, 'first');
     final preserved = directory
         .listSync()
@@ -130,6 +133,7 @@ void main() {
     await store.save(people('third'));
     expect((await store.load()).shooters.single.name, 'third');
   });
+  test('missing primary with backup requires explicit recovery', () async {
     await store.save(people('first'));
     await store.save(people('second'));
     await File('${directory.path}/training.json').delete();
@@ -138,9 +142,13 @@ void main() {
       store.save(people('third')),
       throwsA(isA<StoreException>()),
     );
+    expect((await store.restoreBackup()).shooters.single.name, 'first');
   });
+  test('invalid backup does not alter primary', () async {
     await store.save(people('first'));
+    await File('${directory.path}/training.backup.json')
         .writeAsString('invalid');
+    await expectLater(store.restoreBackup(), throwsA(isA<StoreException>()));
     expect((await store.load()).shooters.single.name, 'first');
   });
   test(
