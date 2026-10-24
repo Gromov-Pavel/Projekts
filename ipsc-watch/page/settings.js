@@ -6,7 +6,7 @@ Page({
   build() {
     releaseScreen()
     label('Настройки', 90, 35, 300, 45, 30)
-    label('Версия 0.4.1', 90, 83, 300, 24, 18, 0x97a5b4)
+    label('Версия 0.4.2', 90, 83, 300, 24, 18, 0x97a5b4)
     label('Не гасить экран', 65, 105, 350, 40, 26)
     this.training = button('', 55, 175, 370, 64, () => this.choose('training'))
     this.run = button('', 55, 255, 370, 64, () => this.choose('run'))

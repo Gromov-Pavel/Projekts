@@ -35,7 +35,7 @@ test('live page shows phone metrics, switches controls and releases Zepp link on
   page.link.state.phase=1; page.render(); assert.equal(buttons[0].text,'Стоп')
   page.link.state.phase=3; page.render(); assert.equal(buttons[0].ready,true); assert.equal(buttons[0].stop,false); buttons[0].click(); assert.deepEqual(commands,[false,true])
   page.link.state.phone=false; page.render(); buttons[0].click()
-  assert.equal(buttons[0].text,'Старт на таймере'); assert.deepEqual(commands,[false,true])
+  assert.equal(buttons[0].text,'СТАРТ'); assert.deepEqual(commands,[false,true])
   assert.equal(page.status.text,'Серия завершена')
   page.link.state={revision:10,phase:2,total:0,count:0,phone:false,control:false}; page.render()
   assert.equal(page.status.text,'Серия идёт · внешний таймер'); assert.equal(buttons[0].text,'Серия идёт')

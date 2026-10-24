@@ -45,8 +45,8 @@ Page(BasePage({
     update(this.action, !fresh ? (this.link.active ? 'Подключаем…' : 'Подключить')
       : state.revision === 0 ? 'Сверьте код' : stopping ? 'Останавливаем…'
       : this.link.pending ? 'Запускаем…' : state.phase === 4 ? 'См. телефон'
-      : !state.phone ? (running ? 'Серия идёт' : 'Старт на таймере') : !state.control ? 'См. телефон'
-      : running ? 'Стоп' : 'Старт')
+      : !state.phone ? (running ? 'Серия идёт' : 'СТАРТ') : !state.control ? 'См. телефон'
+      : running ? 'Стоп' : 'СТАРТ')
     actionColor(this.action, Boolean(running || stopping), Boolean(ready))
     const awake = getMode() === 'training' || (this.link.active && (!state || state.revision === 0 || this.link.pending)) || (fresh && [1, 2].includes(state?.phase))
     if (this.policy !== awake) { applyScreenPolicy(awake); this.policy = awake }
