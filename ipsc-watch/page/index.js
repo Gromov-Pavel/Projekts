@@ -32,15 +32,20 @@ Page(BasePage({
     update(this.total, ((state?.total || 0) / 1000).toFixed(2))
     update(this.count, String(state?.count || 0))
     update(this.split, state?.split == null ? '—' : (state.split / 1000).toFixed(2))
-    update(this.status, fresh && state.revision !== 0 && state.phase === 4
-      ? (state.phone ? 'Откройте таймер на телефоне' : 'Подключите внешний таймер') : this.link.message)
+    let status = this.link.message
+    if (fresh && state.revision !== 0 && !state.failed && !this.link.pending) {
+      if (state.phase === 4) status = state.phone ? 'Откройте таймер на телефоне' : 'Подключите внешний таймер'
+      else if (!state.phone) status = state.phase === 3 ? 'Серия завершена'
+        : [1, 2].includes(state.phase) ? 'Серия идёт · внешний таймер' : 'Внешний таймер · готов'
+    }
+    update(this.status, status)
     const stopping = this.link.stopRequested || (this.link.pending && !this.link.pending.start)
     const running = fresh && state.revision !== 0 && [1, 2].includes(state.phase)
     const ready = fresh && state.revision !== 0 && state.phone && state.control && state.phase !== 4
     update(this.action, !fresh ? (this.link.active ? 'Подключаем…' : 'Подключить')
       : state.revision === 0 ? 'Сверьте код' : stopping ? 'Останавливаем…'
       : this.link.pending ? 'Запускаем…' : state.phase === 4 ? 'См. телефон'
-      : !state.phone ? 'Старт на таймере' : !state.control ? 'См. телефон'
+      : !state.phone ? (running ? 'Серия идёт' : 'Старт на таймере') : !state.control ? 'См. телефон'
       : running ? 'Стоп' : 'Старт')
     actionColor(this.action, Boolean(running || stopping), Boolean(ready))
     const awake = getMode() === 'training' || (this.link.active && (!state || state.revision === 0 || this.link.pending)) || (fresh && [1, 2].includes(state?.phase))

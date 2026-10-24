@@ -5,8 +5,8 @@
     "appName": "IPSC тренировОчка",
     "appType": "app",
     "version": {
-      "code": 7,
-      "name": "0.4.0"
+      "code": 8,
+      "name": "0.4.1"
     },
     "vender": "Pavel Gromov",
     "description": "Bluetooth-экран выбранного таймера и управление телефонным таймером",
