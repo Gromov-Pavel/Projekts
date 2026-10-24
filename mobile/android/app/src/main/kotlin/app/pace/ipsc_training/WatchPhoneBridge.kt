@@ -1,5 +1,7 @@
 package app.pace.ipsc_training
 
+import android.content.Context
+import java.security.MessageDigest
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
@@ -23,10 +25,19 @@ import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
 
 /** Zepp Side Service talks only to this phone's loopback interface. */
-class WatchPhoneBridge(messenger: BinaryMessenger) {
+class WatchPhoneBridge(context: Context, messenger: BinaryMessenger) {
     companion object { const val PORT = 19373 }
     private val main = Handler(Looper.getMainLooper())
     private val random = SecureRandom()
+    private val preferences = context.getSharedPreferences("ipsc_watch_pair", Context.MODE_PRIVATE)
+    private var pendingTrust: String? = null
+    private fun token() = ByteArray(32).also(random::nextBytes).joinToString("") { "%02x".format(it.toInt() and 255) }
+    private fun digest(value: String) = MessageDigest.getInstance("SHA-256").digest(value.toByteArray(Charsets.US_ASCII))
+    private fun trusted(client: String, key: String): Boolean {
+        if (!key.matches(Regex("[0-9a-f]{64}")) || preferences.getString("client", null) != client) return false
+        val expected = preferences.getString("digest", null) ?: return false
+        return MessageDigest.isEqual(expected.toByteArray(Charsets.US_ASCII), digest(key).joinToString("") { "%02x".format(it.toInt() and 255) }.toByteArray(Charsets.US_ASCII))
+    }
     @Volatile private var epoch = 0
     @Volatile private var server: ServerSocket? = null
     private var sink: EventChannel.EventSink? = null
@@ -47,12 +58,22 @@ class WatchPhoneBridge(messenger: BinaryMessenger) {
         MethodChannel(messenger, "ipsc/watch").setMethodCallHandler { call, result ->
             try {
                 when (call.method) {
-                    "start" -> { start(); result.success(null) }
-                    "stop" -> { close(); result.success(null) }
+                    "preferences" -> result.success(preferences.getBoolean("enabled", false))
+                    "start" -> { start(); preferences.edit().putBoolean("enabled", true).apply(); result.success(null) }
+                    "close" -> { close(); result.success(null) }
+                    "stop" -> { preferences.edit().putBoolean("enabled", false).apply(); close(); result.success(null) }
+                    "forget" -> {
+                        check(preferences.edit().remove("client").remove("digest").commit()) { "Не удалось забыть часы" }
+                        peer = null; approved = false; peerCode = 0; session = ""; pendingTrust = null; lastCommand = 0
+                        event("disconnected"); result.success(null)
+                    }
                     "approve" -> {
                         expirePeer()
                         check(peer != null && peer == call.argument<String>("peer")) { "Часы уже отключились" }
                         check(peerCode == call.argument<Int>("code")) { "Код подключения изменился" }
+                        val key = token()
+                        check(preferences.edit().putString("client", peer).putString("digest", digest(key).joinToString("") { "%02x".format(it.toInt() and 255) }).commit()) { "Не удалось сохранить часы" }
+                        pendingTrust = key
                         approved = true
                         Log.i("IPSCWatch", "Zepp watch approved")
                         result.success(null)
@@ -93,31 +114,34 @@ class WatchPhoneBridge(messenger: BinaryMessenger) {
     }
     private fun expirePeer() {
         if (peer != null && SystemClock.elapsedRealtime() - lastSeen > 6000) {
-            peer = null; approved = false; peerCode = 0; session = ""; lastCommand = 0
+            peer = null; approved = false; peerCode = 0; session = ""; pendingTrust = null; lastCommand = 0
             event("disconnected")
         }
     }
     private fun error(status: Int, message: String) = Reply(status, JSONObject().put("error", message))
-    private fun handle(method: String, path: String, client: String, authSession: String, bytes: ByteArray?): Reply {
+    private fun handle(method: String, path: String, client: String, authSession: String, trust: String, bytes: ByteArray?): Reply {
         expirePeer()
         if (!client.matches(Regex("[0-9a-f]{32}"))) return error(400, "Неверный запрос Zepp")
         if (method == "GET" && path == "/v1/state") {
             if (peer != null && peer != client) return error(409, "Дождитесь завершения предыдущей связи")
             if (peer == null) {
-                peer = client; approved = false; lastCommand = 0
+                peer = client; approved = trusted(client, trust); pendingTrust = null; lastCommand = 0
                 peerCode = random.nextInt(900000) + 100000
                 session = ByteArray(16).also(random::nextBytes).joinToString("") { "%02x".format(it.toInt() and 255) }
                 Log.i("IPSCWatch", "Zepp side service connected; confirmation required")
-                event("peer")
+                event(if (approved) "trusted" else "peer")
             }
+            if (approved && pendingTrust == null && !trusted(client, trust)) return error(403, "Подтвердите часы заново")
+            if (trusted(client, trust)) pendingTrust = null
             lastSeen = SystemClock.elapsedRealtime()
             val packet = if (approved) snapshot else ByteBuffer.allocate(20).order(ByteOrder.LITTLE_ENDIAN)
                 .put(1.toByte()).put(4.toByte()).putShort(0).putInt(peerCode).putInt(0).putInt(0).putInt(-1).array()
-            return Reply(200, JSONObject().put("session", session)
-                .put("packet", JSONArray(packet.map { it.toInt() and 255 })))
+            val body = JSONObject().put("session", session).put("packet", JSONArray(packet.map { it.toInt() and 255 }))
+            if (approved && pendingTrust != null) body.put("trust", pendingTrust)
+            return Reply(200, body)
         }
         if (method == "POST" && path == "/v1/command") {
-            if (!approved || peer != client || authSession != session) return error(403, "Подтвердите код на телефоне")
+            if (!approved || peer != client || authSession != session || !trusted(client, trust)) return error(403, "Подтвердите код на телефоне")
             if (bytes == null || bytes.size != 12 || bytes[0].toInt() != 1 || bytes[1].toInt() !in 1..2)
                 return error(400, "Неверная команда")
             val data = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN)
@@ -177,7 +201,7 @@ class WatchPhoneBridge(messenger: BinaryMessenger) {
             main.post {
                 try {
                     response.set(if (!canceled.get() && cycle == epoch && server != null)
-                        handle(request[0], request[1], headers["x-ipsc-client"] ?: "", headers["x-ipsc-session"] ?: "", packet)
+                        handle(request[0], request[1], headers["x-ipsc-client"] ?: "", headers["x-ipsc-session"] ?: "", headers["x-ipsc-trust"] ?: "", packet)
                         else error(503, "Включите связь с часами"))
                 } catch (_: Exception) { response.set(error(400, "Неверный запрос")) }
                 finally { done.countDown() }
@@ -192,7 +216,7 @@ class WatchPhoneBridge(messenger: BinaryMessenger) {
         ++epoch
         val socket = server; server = null
         try { socket?.close() } catch (_: Exception) {}
-        peer = null; approved = false; peerCode = 0; session = ""; lastCommand = 0
+        peer = null; approved = false; peerCode = 0; session = ""; pendingTrust = null; lastCommand = 0
         Log.i("IPSCWatch", "Zepp loopback bridge closed")
     }
 }

@@ -24,6 +24,10 @@ class WatchScreen extends StatelessWidget {
                 : (value) => value ? bridge.start() : bridge.stop(),
           ),
           Text(bridge.status),
+          TextButton(
+            onPressed: bridge.busy ? null : bridge.forget,
+            child: const Text('Забыть часы'),
+          ),
           if (bridge.peer != null && !bridge.approved) ...[
             Text('На часах должен быть код: ${bridge.peerCode ?? "—"}'),
             FilledButton(
@@ -58,7 +62,7 @@ class WatchScreen extends StatelessWidget {
           ),
           const SizedBox(height: 24),
           const Text(
-            'Включите связь → на часах нажмите «Подключить» → подтвердите устройство здесь. После разрыва подтверждение нужно повторить.',
+            'Включите связь → на часах нажмите «Подключить» → подтвердите устройство здесь. Подтверждённые часы запоминаются и подключаются автоматически. Повторная сверка нужна после сброса пары.',
           ),
         ],
       ),

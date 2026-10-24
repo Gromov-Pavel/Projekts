@@ -26,6 +26,7 @@ Page(BasePage({
       if (state.phone && state.control && state.phase !== 4) this.link.command(![1, 2].includes(state.phase))
     })
     this.render()
+    this.link.connect()
   },
   render() {
     const state = this.link.state, fresh = this.link.fresh()

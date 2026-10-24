@@ -74,6 +74,31 @@ class WatchBridge extends ChangeNotifier {
     if (!_disposed) notifyListeners();
   }
 
+  Future<void> restore() async {
+    try {
+      final enabledBefore =
+          await channel.invokeMethod<bool>('preferences') ?? false;
+      if (!_disposed && enabledBefore && !enabled && !busy) await start();
+    } catch (_) {
+      /* Older native builds have no remembered pairing. */
+    }
+  }
+
+  Future<void> forget() async {
+    if (busy) return;
+    try {
+      await channel.invokeMethod<void>('forget');
+      approved = false;
+      peer = null;
+      peerCode = null;
+      status = 'Часы забыты. Подключите и подтвердите их заново.';
+      _notify();
+    } catch (e) {
+      status = 'Не удалось забыть часы: $e';
+      _notify();
+    }
+  }
+
   Future<void> start() async {
     if (busy || enabled) return;
     busy = true;
@@ -100,7 +125,9 @@ class WatchBridge extends ChangeNotifier {
       enabled = true;
       session.watchBridgeRunning = true;
       await session.refreshBackgroundService();
-      status = peer == null
+      status = approved
+          ? 'Часы подключены автоматически'
+          : peer == null
           ? 'Откройте приложение часов через Zepp'
           : 'Подтвердите свои часы на этом экране';
       _lastPublished = null;
@@ -232,6 +259,11 @@ class WatchBridge extends ChangeNotifier {
   void _event(dynamic raw) {
     if (_disposed || raw is! Map) return;
     switch (raw['event']) {
+      case 'trusted':
+        peer = raw['peer'] as String?;
+        peerCode = null;
+        approved = true;
+        status = 'Часы подключены автоматически';
       case 'peer':
         peer = raw['peer'] as String?;
         peerCode = raw['code'] as int?;
@@ -325,7 +357,7 @@ class WatchBridge extends ChangeNotifier {
     enabled = false;
     session.watchBridgeRunning = false;
     unawaited(_events?.cancel());
-    unawaited(channel.invokeMethod<void>('stop').catchError((Object _) {}));
+    unawaited(channel.invokeMethod<void>('close').catchError((Object _) {}));
     super.dispose();
   }
 }

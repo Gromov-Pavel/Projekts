@@ -11,6 +11,65 @@ void main() {
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(WatchBridge.channel, (_) async => null);
   });
+  test(
+    'forgotten watch loses approval and stale commands cannot execute',
+    () async {
+      final calls = <String>[];
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(WatchBridge.channel, (call) async {
+            calls.add(call.method);
+            return null;
+          });
+      final bridge = WatchBridge(TimerSession(onImport: (_, _) async => true));
+      addTearDown(bridge.dispose);
+      bridge.enabled = bridge.approved = true;
+      bridge.peer = 'old';
+      bridge.peerCode = 123456;
+      await bridge.forget();
+      expect(calls, contains('forget'));
+      expect(bridge.approved, false);
+      expect(bridge.peer, null);
+      expect(bridge.peerCode, null);
+      final commands = <bool>[];
+      bridge.attachPhone((start) async {
+        commands.add(start);
+      });
+      await bridge.handleCommand({'run': bridge.run, 'op': 1});
+      expect(commands, isEmpty);
+    },
+  );
+
+  test('automatic restore stays off when user disabled connection', () async {
+    final calls = <String>[];
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(WatchBridge.channel, (call) async {
+          calls.add(call.method);
+          return false;
+        });
+    final bridge = WatchBridge(TimerSession(onImport: (_, _) async => true));
+    await bridge.restore();
+    expect(calls, ['preferences']);
+    expect(bridge.enabled, false);
+    bridge.dispose();
+  });
+
+  test(
+    'disposing the screen closes transport without saving user opt-out',
+    () async {
+      final calls = <String>[];
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(WatchBridge.channel, (call) async {
+            calls.add(call.method);
+            return null;
+          });
+      final bridge = WatchBridge(TimerSession(onImport: (_, _) async => true));
+      bridge.dispose();
+      await Future<void>.delayed(Duration.zero);
+      expect(calls, contains('close'));
+      expect(calls, isNot(contains('stop')));
+    },
+  );
+
   test('wire vector matches watch; first shot has no fabricated split', () {
     final bytes = watchPacket(
       run: 7,

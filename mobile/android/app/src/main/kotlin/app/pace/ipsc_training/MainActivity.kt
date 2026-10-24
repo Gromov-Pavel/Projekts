@@ -23,7 +23,7 @@ class MainActivity : FlutterActivity() {
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
-        watchPhoneBridge = WatchPhoneBridge(flutterEngine.dartExecutor.binaryMessenger)
+        watchPhoneBridge = WatchPhoneBridge(this, flutterEngine.dartExecutor.binaryMessenger)
         phoneAudio = PhoneTimerAudio(this, flutterEngine.dartExecutor.binaryMessenger)
         videoExporter = VideoAnalysisExporter(this)
         videoPreview = VideoPreview(this)

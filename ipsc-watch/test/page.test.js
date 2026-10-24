@@ -12,6 +12,7 @@ test('live page shows phone metrics, switches controls and releases Zepp link on
     constructor(update) { this.update=update; this.state=null; this.message='Нет подключения' }
     fresh() { return this.state!==null }
     connect() { connected++;this.active=true }
+    poll() {}
     command(start) { commands.push(start) }
     close() { closed++ }
   }

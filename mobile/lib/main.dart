@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:file_picker/file_picker.dart';
@@ -125,6 +126,7 @@ class _TrainingHomeState extends State<TrainingHome> {
   @override
   void initState() {
     super.initState();
+    unawaited(watchBridge.restore());
     load();
   }
 
