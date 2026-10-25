@@ -50,6 +50,8 @@ class TimerLink {
   final pending = <TimerPendingSeries>[];
   TimerPendingSeries? active;
   bool acceptedLegacy = false;
+  bool recovering = false;
+  int generation = 0;
   String status = 'Подключение…';
 }
 
@@ -74,6 +76,7 @@ class TimerSession extends ChangeNotifier {
   StreamSubscription<List<ScanResult>>? _scanSubscription;
   StreamSubscription<bool>? _scanningSubscription;
   bool scanning = false;
+  bool _scanStarting = false;
   bool searched = false;
   String? lastError;
   int diagnosticBytes = 0;
@@ -90,6 +93,8 @@ class TimerSession extends ChangeNotifier {
   File? _preferencesFile;
   Future<void> _preferencesQueue = Future.value();
   Timer? _reconnectTimer;
+  Timer? _recoveryTimer;
+  StreamSubscription<BluetoothAdapterState>? _adapterSubscription;
   bool _autoConnecting = false;
   bool _restored = false;
   final _paused = <String>{};
@@ -143,8 +148,10 @@ class TimerSession extends ChangeNotifier {
     if (timer == null) return;
     timer.autoConnect = enabled;
     if (enabled) _paused.remove(id);
+    if (!enabled) links[id]?.recovering = false;
     if (mounted) notifyListeners();
     await _savePreferences();
+    unawaited(_syncService());
     if (enabled) await _autoScan();
   }
 
@@ -159,6 +166,35 @@ class TimerSession extends ChangeNotifier {
       return;
     }
     await scan(requestPermissions: false);
+  }
+
+  bool willReconnect(TimerLink link) =>
+      mounted &&
+      preferences.timers[link.device.remoteId.str]?.autoConnect == true &&
+      !_paused.contains(link.device.remoteId.str);
+
+  void connectionLost(TimerLink link) {
+    if (!mounted) return;
+    link.generation++;
+    unawaited(link.notifications?.cancel());
+    link.notifications = null;
+    // A Special Pie shot has no session ID: never attach post-gap shots to an old run.
+    link.decoder = TimerProtocols.decoder(link.profile);
+    finishSeries(link, partial: true);
+    link.recovering = willReconnect(link);
+    link.status = link.recovering
+        ? 'Связь потеряна · восстанавливаем автоматически'
+        : 'Связь потеряна · полученные времена сохранены';
+    if (link.recovering) _scheduleRecovery();
+    unawaited(_syncService());
+    notifyListeners();
+  }
+
+  void _scheduleRecovery() {
+    if (!mounted || (_recoveryTimer?.isActive ?? false)) return;
+    _recoveryTimer = Timer(const Duration(seconds: 2), () {
+      if (mounted) unawaited(_autoScan());
+    });
   }
 
   Future<void> _connectKnown() async {
@@ -184,6 +220,9 @@ class TimerSession extends ChangeNotifier {
 
   void _listenForScan() {
     if (_scanSubscription != null) return;
+    _adapterSubscription = FlutterBluePlus.adapterState.listen((state) {
+      if (state == BluetoothAdapterState.on && mounted) unawaited(_autoScan());
+    }, onError: (Object e) => _report('Состояние Bluetooth', e));
     _scanSubscription = FlutterBluePlus.scanResults.listen((results) {
       if (mounted) {
         _change(() => found = results);
@@ -222,9 +261,10 @@ class TimerSession extends ChangeNotifier {
   }
 
   Future<void> scan({bool requestPermissions = true}) async {
-    if (scanning || busy) return;
-    _listenForScan();
+    if (scanning || busy || _scanStarting) return;
+    _scanStarting = true;
     try {
+      _listenForScan();
       final sdk =
           await const MethodChannel('pace/audio')
               .invokeMethod<int>('androidSdk') ??
@@ -269,6 +309,8 @@ class TimerSession extends ChangeNotifier {
       await FlutterBluePlus.startScan(timeout: const Duration(seconds: 10));
     } catch (e) {
       _report('Поиск таймеров', e);
+    } finally {
+      _scanStarting = false;
     }
   }
 
@@ -278,6 +320,7 @@ class TimerSession extends ChangeNotifier {
     }
     _change(() => busy = true);
     final link = links[device.remoteId.str] ?? TimerLink(device);
+    final generation = ++link.generation;
     if (!automatic || selectedId == null) {
       selectedId = device.remoteId.str;
       preferences.selectedId = selectedId;
@@ -294,21 +337,15 @@ class TimerSession extends ChangeNotifier {
       await _syncService();
       await link.connection?.cancel();
       link.connection = device.connectionState.listen((state) {
-        if (state == BluetoothConnectionState.disconnected) {
-          link.notifications?.cancel();
-          link.notifications = null;
-          link.decoder = TimerProtocols.decoder(link.profile);
-          finishSeries(link, partial: true);
-          unawaited(_syncService());
-          link.status =
-              preferences.timers[device.remoteId.str]?.autoConnect == true &&
-                  !_paused.contains(device.remoteId.str)
-              ? 'Восстанавливаем связь… Серия может быть неполной.'
-              : 'Отключён; сохранённые времена могут быть неполными';
-          if (mounted) _change(() {});
+        if (state == BluetoothConnectionState.disconnected &&
+            link.generation == generation) {
+          connectionLost(link);
         }
       });
       link.services = await device.discoverServices();
+      if (mounted && (generation != link.generation || !device.isConnected)) {
+        throw StateError('Соединение прервалось во время подготовки таймера');
+      }
       if (!mounted) {
         await device.disconnect();
         return;
@@ -330,6 +367,9 @@ class TimerSession extends ChangeNotifier {
       final c = notificationCharacteristic(link);
       if (c != null) {
         await subscribe(link, c);
+        if (link.notifications == null) {
+          throw StateError('Не удалось восстановить приём таймера');
+        }
       } else {
         link.profile = TimerProtocols.rawId;
         link.status =
@@ -361,6 +401,10 @@ class TimerSession extends ChangeNotifier {
       link.status = 'Ошибка подключения: $e';
       _report('Подключение', e);
     } finally {
+      if (mounted && !device.isConnected && willReconnect(link)) {
+        link.recovering = true;
+        _scheduleRecovery();
+      }
       if (mounted) _change(() => busy = false);
     }
   }
@@ -393,7 +437,13 @@ class TimerSession extends ChangeNotifier {
       }
       link.decoder = TimerProtocols.decoder(link.profile);
       finishSeries(link, partial: true);
+      final generation = link.generation;
       link.notifications = characteristic.onValueReceived.listen((bytes) {
+        if (!mounted ||
+            generation != link.generation ||
+            !link.device.isConnected) {
+          return;
+        }
         receive(
           link,
           bytes,
@@ -406,11 +456,14 @@ class TimerSession extends ChangeNotifier {
         await link.notifications?.cancel();
         return;
       }
+      final recovered = link.recovering;
+      link.recovering = false;
       link.status = link.profile == TimerProtocols.rawId
           ? 'Диагностика включена. Времена выстрелов пока не распознаются.'
           : link.profile == TimerProtocols.autoId
           ? 'Определяем протокол. Запустите серию на таймере; времена сверяйте с его экраном.'
           : 'Приём включён. Запустите новую серию на таймере, затем остановите её.';
+      if (recovered) link.status = 'Связь восстановлена · начните новую серию. Пропущенные выстрелы не подтверждены.';
       if (mounted) _change(() {});
     } catch (e) {
       await link.notifications?.cancel();
@@ -481,6 +534,8 @@ class TimerSession extends ChangeNotifier {
 
   Future<void> disconnect(TimerLink link) async {
     _paused.add(link.device.remoteId.str);
+    link.generation++;
+    link.recovering = false;
     try {
       await link.notifications?.cancel();
       await link.connection?.cancel();
@@ -669,7 +724,11 @@ class TimerSession extends ChangeNotifier {
   Future<void> refreshBackgroundService() => _syncService();
   Future<void> _syncService() {
     _serviceQueue = _serviceQueue.then((_) async {
-      final needed = (connectedCount > 0 || watchBridgeRunning) && !_disposed;
+      final needed =
+          (connectedCount > 0 ||
+              watchBridgeRunning ||
+              links.values.any((link) => link.recovering)) &&
+          !_disposed;
       if (needed == serviceRunning) return;
       try {
         if (needed) {
@@ -705,6 +764,8 @@ class TimerSession extends ChangeNotifier {
   void dispose() {
     _disposed = true;
     _reconnectTimer?.cancel();
+    _recoveryTimer?.cancel();
+    _adapterSubscription?.cancel();
     _scanSubscription?.cancel();
     _scanningSubscription?.cancel();
     unawaited(FlutterBluePlus.stopScan().catchError((Object _) {}));

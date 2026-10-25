@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:ipsc_training/timer_protocol.dart';
 import 'package:ipsc_training/timer_session.dart';
+import 'package:ipsc_training/timer_preferences.dart';
 import 'package:ipsc_training/timers_screen.dart';
 
 class _ServiceSession extends TimerSession {
@@ -35,6 +36,32 @@ void main() {
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(channel, null);
   });
+  test('foreground reception service survives range loss until recovery is disabled', () async {
+    const channel = MethodChannel('pace/audio');
+    final calls = <String>[];
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(channel, (call) async {
+          calls.add(call.method);
+          return 32;
+        });
+    final session = _ServiceSession()..serviceRunning = true;
+    final device = TimerLink(BluetoothDevice.fromId('00:11:22:33:44:90'));
+    final id = device.device.remoteId.str;
+    session.links[id] = device;
+    session.preferences.timers[id] = SavedTimer(id, 'Fixture');
+    session.connectionLost(device);
+    await session.refreshBackgroundService();
+    expect(session.serviceRunning, isTrue);
+    expect(calls, isEmpty);
+    await session.setAutoConnect(id, false);
+    await session.refreshBackgroundService();
+    expect(session.serviceRunning, isFalse);
+    expect(calls, ['timerServiceStop']);
+    session.dispose();
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(channel, null);
+  });
+
   const start = [0xf8, 0xf9, 0x34, 3, 0xf9, 0xf8];
   const shot = [0xf8, 0xf9, 0x36, 0, 4, 36, 2, 12, 0xf9, 0xf8];
   const stop = [0xf8, 0xf9, 0x18, 3, 0xf9, 0xf8];
@@ -44,6 +71,68 @@ void main() {
     value.decoder = TimerProtocols.decoder(value.profile);
     return value;
   }
+
+  test(
+    'range loss saves partial run once and cannot merge post-gap shots into it',
+    () async {
+      final saved = <String>[];
+      final session = TimerSession(
+        onImport: (times, source) async {
+          saved.add(source);
+          return true;
+        },
+      );
+      addTearDown(session.dispose);
+      final device = link('00:11:22:33:44:88');
+      session.links[device.device.remoteId.str] = device;
+      session.preferences.timers[device.device.remoteId.str] = SavedTimer(
+        device.device.remoteId.str,
+        'Fixture',
+      );
+      session.receive(device, [...start, ...shot]);
+      final old = device.active!;
+      session.connectionLost(device);
+      session.connectionLost(device);
+      await Future<void>.delayed(Duration.zero);
+      expect(device.recovering, isTrue);
+      expect(old.partial, isTrue);
+      expect(old.saved, isTrue);
+      expect(saved.length, 1);
+      expect(saved.single, contains('/ partial'));
+      expect(device.active, isNull);
+      session.receive(device, shot);
+      expect(device.active, isNull);
+      expect(old.times, [4.36]);
+      session.receive(device, [0xf8, 0xf9, 0x34, 4, 0xf9, 0xf8, ...shot]);
+      expect(device.active!.times, [4.36]);
+      expect(device.active!.id, isNot(old.id));
+      expect(device.active!.partial, isFalse);
+    },
+  );
+
+  test(
+    'disabled auto-connect and manual disconnect suppress recovery intent',
+    () async {
+      final session = TimerSession(onImport: (_, _) async => true);
+      addTearDown(session.dispose);
+      final device = link('00:11:22:33:44:89');
+      final id = device.device.remoteId.str;
+      session.links[id] = device;
+      session.preferences.timers[id] = SavedTimer(
+        id,
+        'Fixture',
+        autoConnect: false,
+      );
+      session.connectionLost(device);
+      expect(device.recovering, isFalse);
+      session.preferences.timers[id]!.autoConnect = true;
+      expect(session.willReconnect(device), isTrue);
+      await session.disconnect(device);
+      expect(session.willReconnect(device), isFalse);
+      session.connectionLost(device);
+      expect(device.recovering, isFalse);
+    },
+  );
 
   testWidgets(
     'fullscreen live fits portrait and landscape and keeps the series',

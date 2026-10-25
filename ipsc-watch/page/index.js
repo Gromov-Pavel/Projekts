@@ -22,6 +22,7 @@ Page(BasePage({
     label('ВЫСТРЕЛЫ', 245, 266, 180, 24, 18, 0x97a5b4)
     this.split = label('—', 55, 295, 180, 50, 40)
     this.count = label('0', 245, 295, 180, 50, 40)
+    this.gap = label('', 30, 346, 420, 18, 14, 0xffbb66)
     this.action = actionButton('Подключить', () => {
       if (!this.link.fresh()) { if (!this.link.active) this.link.connect(); else this.link.poll(); return }
       const state = this.link.state
@@ -46,6 +47,7 @@ Page(BasePage({
     if (fresh && state.revision !== 0 && !state.phone && !state.control && this.externalNotice && [0, 3].includes(state.phase)) status = 'Старт на самом таймере'
     if (fresh && [1, 2].includes(state.phase)) this.externalNotice = false
     update(this.status, status)
+    update(this.gap, state?.partial ? 'НЕПОЛНЫЙ ПРОХОД · БЫЛ ОБРЫВ' : '')
     const stopping = this.link.stopRequested || (this.link.pending && !this.link.pending.start)
     const running = fresh && state.revision !== 0 && [1, 2].includes(state.phase)
     const ready = fresh && state.revision !== 0 && state.control && state.phase !== 4
@@ -55,7 +57,7 @@ Page(BasePage({
       : !state.phone && !state.control ? (running ? 'Серия идёт' : 'СТАРТ') : !state.control ? 'См. телефон'
       : running ? 'Стоп' : 'СТАРТ')
     actionColor(this.action, Boolean(running || stopping), Boolean(ready))
-    const awake = getMode() === 'training' || (this.link.active && (!state || state.revision === 0 || this.link.pending)) || (fresh && [1, 2].includes(state?.phase))
+    const awake = getMode() === 'training' || (this.link.direct && this.link.active && !fresh) || (this.link.active && (!state || state.revision === 0 || this.link.pending)) || (fresh && [1, 2].includes(state?.phase))
     if (this.policy !== awake) { applyScreenPolicy(awake); this.policy = awake }
   },
   onDestroy() { this.link.close(); releaseScreen() }

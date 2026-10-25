@@ -8,6 +8,7 @@ export class DirectTimerLink {
     this.update=update;this.direct=true;this.epoch=0;this.connection=null;this.profile=null
     this.active=false;this.subscribed=false;this.pending=null;this.stopRequested=false
     this.state=null;this.message='Выберите таймер в настройках';this.timeout=null;this.tick=null
+    this.wanted=false;this.retryTimer=null;this.retryAttempt=0;this.deviceKey=null;this.interrupted=false
   }
   show(message) {this.message=message;this.update(this)}
   fresh() {return this.connection!==null&&this.profile!==null&&this.subscribed}
@@ -21,12 +22,16 @@ export class DirectTimerLink {
       this.fail(error)
     },20000)
   }
-  connect() {
+  connect(retry=false) {
     this.close()
     const saved=getDirectTimer(), definition=timerProfiles.find(p=>p.id===saved?.profile)
     if(!saved||!definition){this.show('Выберите таймер в настройках');return}
+    const key=definition.id+':'+saved.address.join(':')
+    if(key!==this.deviceKey){this.state=null;this.interrupted=false}
+    if(!retry)this.retryAttempt=0
+    this.deviceKey=key;this.wanted=true
     this.definition=definition;this.decoder=new TimerDecoder(definition.id)
-    this.state=null;this.active=true;const epoch=this.epoch
+    this.active=true;const epoch=this.epoch
     this.setStage('scan','Поиск выбранного таймера…')
     try {
       // Connect from a fresh native scan result, as in the Zepp BLE sample.
@@ -54,8 +59,11 @@ export class DirectTimerLink {
           if(value.status!==0){this.fail('Ошибка подписки: '+value.status);return}
           if(this.subscribed)return
           clearTimeout(this.timeout);this.timeout=null;this.subscribed=true;this.stage='ready'
-          this.state={revision:1,run:0,phase:0,phone:false,control:true,failed:false,count:0,total:0,split:null}
-          this.tick=setInterval(()=>this.poll(),500);this.show('Напрямую · '+saved.name)
+          this.retryAttempt=0
+          this.state=this.state?{...this.state,revision:this.state.revision+1,phase:this.interrupted?0:this.state.phase,partial:this.interrupted}
+            :{revision:1,run:0,phase:0,phone:false,control:true,failed:false,count:0,total:0,split:null}
+          this.tick=setInterval(()=>this.poll(),500)
+          this.show(this.interrupted?'Связь восстановлена · начните серию':'Напрямую · '+saved.name)
         })
         ble.mstOnCharaNotification((p,u,d)=>{
           if(epoch!==this.epoch)return
@@ -78,13 +86,28 @@ export class DirectTimerLink {
       }))this.fail('Поиск BLE недоступен')
     }catch(_){this.fail('Ошибка Bluetooth. Повторите')}
   }
-  fail(message){this.close();this.show(message)}
+  fail(message) {
+    const retry=this.wanted
+    if([1,2].includes(this.state?.phase)||this.pending?.start){
+      this.interrupted=true
+      if(this.state)this.state={...this.state,partial:true}
+    }
+    this.close()
+    if(!retry){this.show(message);return}
+    this.wanted=true;this.active=true;this.stage='retry'
+    const wait=Math.min(2000*Math.pow(2,Math.min(this.retryAttempt++,4)),20000),epoch=this.epoch
+    this.retryTimer=setTimeout(()=>{
+      if(this.wanted&&epoch===this.epoch)this.connect(true)
+    },wait)
+    this.show(message+' · повтор через '+wait/1000+' с')
+  }
   receive(bytes) {
     if(!this.fresh())return
     for(const event of this.decoder.add(bytes)) {
       const s=this.state
       if(event.kind==='start'){
-        this.state={...s,revision:s.revision+1,run:s.run+1,phase:2,count:0,total:0,split:null}
+        this.interrupted=false
+        this.state={...s,revision:s.revision+1,run:s.run+1,phase:2,count:0,total:0,split:null,partial:false}
         if(this.pending?.start)this.pending=null
       }else if(event.kind==='shot'){
         this.state={...s,revision:s.revision+1,count:s.count+1,total:event.time,split:s.count?event.time-s.total:null}
@@ -94,9 +117,10 @@ export class DirectTimerLink {
       }
     }
     if(this.stopRequested&&!this.pending&&this.state.phase===2){this.stopRequested=false;this.command(false)}
-    this.show(this.pending?'Ожидаем таймер…':this.state.phase===2?'Серия идёт · напрямую':this.state.phase===3?'Серия завершена':'Таймер · напрямую')
+    this.show(this.pending?'Ожидаем таймер…':this.interrupted?'Связь восстановлена · начните серию':this.state.phase===2?'Серия идёт · напрямую':this.state.phase===3?'Серия завершена':'Таймер · напрямую')
   }
   poll() {
+    if(this.stage==='retry'&&this.wanted){this.connect(true);return}
     if(this.pending && Date.now()-this.pending.at>10000){this.pending=null;this.stopRequested=false;this.show('Нет подтверждения. Проверьте таймер')}
   }
   command(start) {
@@ -110,6 +134,7 @@ export class DirectTimerLink {
     catch(_){this.pending=null;this.stopRequested=false;this.show('Не удалось отправить команду')}
   }
   close() {
+    this.wanted=false;clearTimeout(this.retryTimer);this.retryTimer=null
     this.epoch++;clearTimeout(this.timeout);clearInterval(this.tick);this.timeout=this.tick=null
     try{ble.mstStopScan()}catch(_){}
     try{if(this.profile!==null)ble.mstDestroyProfileInstance(this.profile)}catch(_){}

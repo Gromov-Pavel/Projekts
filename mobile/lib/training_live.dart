@@ -62,11 +62,15 @@ class TrainingLive extends StatelessWidget {
                 ? 'Подключите таймер или запишите проход'
                 : 'Последний сохранённый проход'
           : !connected
-          ? 'Соединение потеряно · подключите таймер снова'
+          ? link.recovering
+                ? 'Связь потеряна · восстанавливаем автоматически'
+                : 'Соединение потеряно · подключите таймер снова'
           : link.notifications == null
           ? 'Подключён · включите приём в настройках таймера'
           : link.active != null
           ? 'Приём выстрелов · новая серия начнётся с нуля'
+          : series?.partial == true
+          ? 'Связь восстановлена · начните новую серию'
           : 'Готов к новой серии · приём продолжается';
       final split = times.isEmpty
           ? 0.0
@@ -159,13 +163,14 @@ class TrainingLive extends StatelessWidget {
       final saved = series == null
           ? null
           : Text(
-              series.saving
-                  ? 'Сохраняем…'
-                  : series.saved
-                  ? 'Серия сохранена'
-                  : series.complete
-                  ? 'Не сохранена · повторите в настройках таймера'
-                  : 'Сохранится по завершении серии',
+              (series.partial ? 'Неполный проход · был обрыв. ' : '') +
+                  (series.saving
+                      ? 'Сохраняем…'
+                      : series.saved
+                      ? 'Серия сохранена'
+                      : series.complete
+                      ? 'Не сохранена · повторите в настройках таймера'
+                      : 'Сохранится по завершении серии'),
               style: textTheme.labelMedium,
             );
       final table = Column(

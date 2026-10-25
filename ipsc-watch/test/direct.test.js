@@ -52,7 +52,7 @@ test('SG events retain millisecond resolution and ACK cannot start a run',()=>{
 })
 
 function linkHarness() {
-  const callbacks={},writes=[],disconnects=[],profiles=[],timers=new Map();let id=0,now=100
+  const callbacks={},writes=[],disconnects=[],profiles=[],timers=new Map(),delays=new Map();let id=0,now=100
   const ble={mstOnPrepare:f=>callbacks.prepare=f,mstOnDescWriteComplete:f=>callbacks.desc=f,
     mstStartScan:f=>{callbacks.scan=f;return true},mstStopScan:()=>{},
     mstOnCharaNotification:f=>callbacks.notify=f,mstOnCharaWriteComplete:f=>callbacks.write=f,
@@ -65,13 +65,43 @@ function linkHarness() {
     mstDisconnect:id=>disconnects.push(id),mstDestroyProfileInstance:()=>{},mstOffAllCb:()=>{}}
   const context={ble,timerProfiles,TimerDecoder,controlPacket,uuid:s=>String(s).toLowerCase(),
     getDirectTimer:()=>({name:'Test',profile:timerProfiles[0].id,address:[1,2,3,4,5,6]}),
-    Uint8Array,ArrayBuffer,Date:{now:()=>now},setTimeout:f=>{timers.set(++id,f);return id},clearTimeout:i=>timers.delete(i),setInterval:()=>++id,clearInterval:()=>{}}
+    Uint8Array,ArrayBuffer,Date:{now:()=>now},setTimeout:(f,ms)=>{timers.set(++id,f);delays.set(id,ms);return id},clearTimeout:i=>timers.delete(i),setInterval:()=>++id,clearInterval:()=>{}}
   const source=readFileSync(new URL('../lib/direct.js',import.meta.url),'utf8').replace(/^import .*$/gm,'').replace('export class DirectTimerLink','globalThis.DirectTimerLink = class DirectTimerLink')
   vm.runInNewContext(source,context)
   const link=new context.DirectTimerLink(()=>{})
-  const ready=()=>{link.connect();callbacks.scan({dev_addr:new Uint8Array([1,2,3,4,5,6]).buffer});callbacks.connect({connected:0,connect_id:7});callbacks.prepare({status:0,profile:5});callbacks.desc({profile:5,chara:timerProfiles[0].notify,status:0})}
-  return {link,ready,callbacks,writes,disconnects,profiles,timers,advance:n=>{now+=n},emit:bytes=>callbacks.notify({profile:5,uuid:timerProfiles[0].notify,data:new Uint8Array(bytes).buffer})}
+  const attach=()=>{callbacks.scan({dev_addr:new Uint8Array([1,2,3,4,5,6]).buffer});callbacks.connect({connected:0,connect_id:7});callbacks.prepare({status:0,profile:5});callbacks.desc({profile:5,chara:timerProfiles[0].notify,status:0})}
+  const ready=()=>{link.connect();attach()}
+  const runTimer=()=>{const [id,fn]=timers.entries().next().value;timers.delete(id);fn()}
+  return {link,ready,attach,callbacks,writes,disconnects,profiles,timers,delays,runTimer,advance:n=>{now+=n},emit:bytes=>callbacks.notify({profile:5,uuid:timerProfiles[0].notify,data:new Uint8Array(bytes).buffer})}
 }
+test('range loss reconnects automatically, keeps last result, never replays commands or merges ambiguous shots',()=>{
+  const h=linkHarness();h.ready();h.emit(start);h.emit(shot)
+  h.link.command(false);const writes=h.writes.length, oldNotify=h.callbacks.notify
+  h.callbacks.connect({connected:2,connect_id:7})
+  assert.equal(h.link.fresh(),false);assert.equal(h.link.state.total,4360);assert.equal(h.link.state.partial,true)
+  assert.equal(h.link.pending,null);assert.equal(h.link.active,true)
+  assert.equal(h.delays.get(h.timers.keys().next().value),2000)
+  h.runTimer();h.attach()
+  assert.equal(h.link.fresh(),true);assert.equal(h.link.state.total,4360);assert.equal(h.writes.length,writes)
+  assert.equal(h.link.state.phase,0);assert.match(h.link.message,/Связь восстановлена/)
+  h.emit([248,249,54,0,5,0,3,12,249,248]);assert.equal(h.link.state.count,1)
+  oldNotify({profile:5,uuid:timerProfiles[0].notify,data:new Uint8Array(start).buffer})
+  assert.equal(h.link.state.partial,true)
+  h.emit([248,249,52,4,249,248]);assert.equal(h.link.state.partial,false);assert.equal(h.link.state.total,0)
+  h.emit(shot);assert.equal(h.link.state.count,1)
+  h.link.close();assert.equal(h.timers.size,0)
+})
+test('absent timer backs off to twenty seconds and leaving the page cancels recovery',()=>{
+  const h=linkHarness();h.ready();h.callbacks.connect({connected:2,connect_id:7})
+  for(const expected of [2000,4000,8000,16000,20000,20000]){
+    assert.equal(h.delays.get(h.timers.keys().next().value),expected)
+    h.runTimer() // retry attempt starts scanning
+    h.runTimer() // scan times out
+  }
+  const stale=Array.from(h.timers.values())[0]
+  h.link.close();assert.equal(h.timers.size,0);assert.equal(h.link.active,false)
+  stale();assert.equal(h.link.active,false);assert.equal(h.timers.size,0);assert.equal(h.writes.length,0)
+})
 test('Zepp profile is registered after connection and uses native short service UUID',()=>{
   const h=linkHarness();h.link.connect();assert.equal(h.callbacks.prepare,undefined)
   const scanTimeout=Array.from(h.timers.values())[0]
