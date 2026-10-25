@@ -52,39 +52,9 @@ class _ShotTimelineState extends State<ShotTimeline> {
         .where(visibleTime)
         .toList();
     return Column(
+      mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text('Время от старта, с'),
-        const SizedBox(height: 8),
-        Wrap(
-          spacing: 16,
-          runSpacing: 8,
-          crossAxisAlignment: WrapCrossAlignment.center,
-          children: [
-            Text('A · Выстрелы', style: TextStyle(color: Colors.teal.shade700)),
-            Text(
-              'B · Выстрелы',
-              style: TextStyle(color: Colors.brown.shade700),
-            ),
-            if (candidates.isNotEmpty || comparisonCandidates.isNotEmpty)
-              const Text('? · Кандидаты'),
-            SegmentedButton<int>(
-              segments: const [
-                ButtonSegment(value: 1, label: Text('×1')),
-                ButtonSegment(value: 2, label: Text('×2')),
-                ButtonSegment(value: 4, label: Text('×4')),
-              ],
-              selected: {_zoom},
-              onSelectionChanged: (value) =>
-                  setState(() => _zoom = value.single),
-              showSelectedIcon: false,
-              style: const ButtonStyle(
-                minimumSize: WidgetStatePropertyAll(Size(48, 48)),
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 8),
         LayoutBuilder(
           builder: (context, constraints) {
             final width = constraints.maxWidth * _zoom;
@@ -100,20 +70,20 @@ class _ShotTimelineState extends State<ShotTimeline> {
                   label:
                       'Дорожка A: ${widget.primaryTimes.length} выстрелов. '
                       'Дорожка B: ${widget.comparisonTimes.length} выстрелов. '
-                      'Кандидаты A (?): ${candidates.length}. '
-                      'Кандидаты B (?): ${comparisonCandidates.length}. '
+                      'Кандидаты A: ${candidates.length}. '
+                      'Кандидаты B: ${comparisonCandidates.length}. '
                       'Старт: 0 секунд.',
                   child: GestureDetector(
                     key: const ValueKey('shot-timeline-track'),
                     behavior: HitTestBehavior.opaque,
                     onTapUp: (details) => widget.onSeek(
-                      ((details.localPosition.dx - 12) /
-                              (width - 24) *
+                      ((details.localPosition.dx - 24) /
+                              (width - 36) *
                               duration)
                           .clamp(0.0, duration),
                     ),
                     child: CustomPaint(
-                      size: Size(width, 160),
+                      size: Size(width, 58),
                       painter: _TimelinePainter(
                         duration: duration,
                         position: position,
@@ -131,18 +101,38 @@ class _ShotTimelineState extends State<ShotTimeline> {
             );
           },
         ),
-        Semantics(
-          label: 'Позиция видео от старта',
-          child: Slider(
-            value: position,
-            max: duration,
-            label: '${position.toStringAsFixed(2)} с',
-            semanticFormatterCallback: (value) =>
-                '${value.toStringAsFixed(2)} секунд',
-            onChanged: widget.onSeek,
+        SizedBox(
+          height: 40,
+          child: Row(
+            children: [
+              Expanded(
+                child: Semantics(
+                  label: 'Позиция видео от старта',
+                  child: Slider(
+                    value: position,
+                    max: duration,
+                    label: '${position.toStringAsFixed(2)} с',
+                    semanticFormatterCallback: (value) =>
+                        '${value.toStringAsFixed(2)} секунд',
+                    onChanged: widget.onSeek,
+                  ),
+                ),
+              ),
+              PopupMenuButton<int>(
+                tooltip: 'Масштаб дорожки',
+                child: Padding(
+                  padding: const EdgeInsets.all(8),
+                  child: Text('×$_zoom'),
+                ),
+                itemBuilder: (_) => [
+                  for (final zoom in [1, 2, 4])
+                    PopupMenuItem(value: zoom, child: Text('×$zoom')),
+                ],
+                onSelected: (zoom) => setState(() => _zoom = zoom),
+              ),
+            ],
           ),
         ),
-        Text('Позиция: ${position.toStringAsFixed(2)} с · Старт: 0 с'),
       ],
     );
   }
@@ -167,8 +157,8 @@ class _TimelinePainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    const left = 12.0, top = 26.0, lane = 56.0;
-    final width = math.max(1.0, size.width - 24);
+    const left = 24.0, top = 18.0, lane = 16.0;
+    final width = math.max(1.0, size.width - 36);
     double x(double time) => left + time / duration * width;
     void text(
       String label,
@@ -209,12 +199,12 @@ class _TimelinePainter extends CustomPainter {
     void shots(List<double> times, double y, Color color) {
       final paint = Paint()
         ..color = color
-        ..strokeWidth = 3;
+        ..strokeWidth = 1.5;
       for (final time in times) {
         if (!time.isFinite || time < 0 || time > duration) continue;
         canvas.drawLine(
-          Offset(x(time), y + 8),
-          Offset(x(time), y + lane - 8),
+          Offset(x(time), y + 2),
+          Offset(x(time), y + lane - 2),
           paint,
         );
       }
@@ -226,16 +216,15 @@ class _TimelinePainter extends CustomPainter {
       for (final time in times) {
         if (!time.isFinite || time < 0 || time > duration) continue;
         final candidateX = x(time);
-        for (var y = laneTop + 18; y < laneTop + lane - 6; y += 8) {
+        for (var y = laneTop + 2; y < laneTop + lane - 2; y += 5) {
           canvas.drawLine(
             Offset(candidateX, y),
-            Offset(candidateX, y + 4),
+            Offset(candidateX, y + 3),
             Paint()
               ..color = colors.outline
               ..strokeWidth = 2,
           );
         }
-        text('?', Offset(candidateX - 3, laneTop + 1), colors.onSurface);
       }
     }
 
@@ -256,8 +245,8 @@ class _TimelinePainter extends CustomPainter {
         ..color = colors.onSurface
         ..strokeWidth = 3,
     );
-    text('A', const Offset(2, top + 20), colors.onSurface);
-    text('B', const Offset(2, top + lane + 20), colors.onSurface);
+    text('A', const Offset(2, top + 1), colors.onSurface);
+    text('B', const Offset(2, top + lane + 1), colors.onSurface);
   }
 
   @override

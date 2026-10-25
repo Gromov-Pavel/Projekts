@@ -104,11 +104,11 @@ class VideoAnalysisExporterSmokeTest {
                     }
                     var brightTextPixels = 0
                     var bottomTextPixels = 0
-                    for (y in 0 until max(1, frame.height / 4)) {
+                    for (y in frame.height / 2 until frame.height) {
                         for (x in 0 until frame.width) {
                             val pixel = frame.getPixel(x, y)
                             if (android.graphics.Color.red(pixel) > 170 && android.graphics.Color.green(pixel) > 170 && android.graphics.Color.blue(pixel) > 170) brightTextPixels++
-                            val bottomPixel = frame.getPixel(x, frame.height - 1 - y)
+                            val bottomPixel = frame.getPixel(x, y)
                             if (android.graphics.Color.red(bottomPixel) > 170 && android.graphics.Color.green(bottomPixel) > 170 && android.graphics.Color.blue(bottomPixel) > 170) bottomTextPixels++
                         }
                     }
@@ -137,18 +137,19 @@ class VideoAnalysisExporterSmokeTest {
         val canvas = android.graphics.Canvas(expected)
         val size = (frame.width * .034f).coerceIn(16f, 64f)
         val pad = size * .45f
-        val top = if (bottom) frame.height - size * 4.2f else 0f
+        val top = if (bottom) frame.height - size * 4.4f else frame.height - size * 4.4f
         val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
             color = android.graphics.Color.WHITE
             typeface = android.graphics.Typeface.create(android.graphics.Typeface.MONOSPACE, android.graphics.Typeface.BOLD)
             textSize = size * 1.5f
         }
-        canvas.drawText(timer, pad, top + size * 2.5f, paint)
+        val textX = if (bottom) frame.width - pad - paint.measureText(timer) else pad
+        canvas.drawText(timer, textX, top + size * 2.5f, paint)
         var matches = 0
         var pixels = 0
-        val right = (pad + paint.measureText(timer)).toInt().coerceAtMost(frame.width)
+        val right = (textX + paint.measureText(timer)).toInt().coerceAtMost(frame.width)
         for (y in max(0, (top + size * .9f).toInt()) until min(frame.height, (top + size * 2.6f).toInt())) {
-            for (x in pad.toInt() until right) {
+            for (x in textX.toInt() until right) {
                 if (android.graphics.Color.alpha(expected.getPixel(x, y)) > 245) {
                     pixels++
                     val actual = frame.getPixel(x, y)

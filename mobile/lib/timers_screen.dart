@@ -59,6 +59,7 @@ class TimersScreen extends StatelessWidget {
       child: Padding(
         padding: const EdgeInsets.all(12),
         child: Column(
+          spacing: 8,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             ListTile(
@@ -295,7 +296,7 @@ class TimersScreen extends StatelessWidget {
                 ),
               ],
             ),
-          ],
+          ].expand<Widget>((child) => [child, const SizedBox(height: 8)]).toList(),
         ),
       ),
     ),

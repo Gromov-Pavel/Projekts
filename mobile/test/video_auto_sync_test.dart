@@ -140,6 +140,12 @@ void main() {
           await tester.tap(play);
           await tester.pumpAndSettle();
           if (!existingB) {
+            await tester.ensureVisible(
+              find.text('Ручная синхронизация и выстрелы'),
+            );
+            await tester.tap(find.text('Ручная синхронизация и выстрелы'));
+            await tester.pumpAndSettle();
+
             final inspectB = find.text('Проверить старт B');
             await tester.scrollUntilVisible(
               inspectB,
@@ -274,7 +280,7 @@ void main() {
         scrollable: find.byType(Scrollable).first,
       );
       await tester.pumpAndSettle();
-      expect(tester.widget<FilledButton>(play).onPressed, isNull);
+      expect(tester.widget<IconButton>(play).onPressed, isNull);
       expect(
         (jsonDecode(
           File('${dir.path}/video-links.json').readAsStringSync(),

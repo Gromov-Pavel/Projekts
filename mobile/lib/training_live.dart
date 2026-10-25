@@ -80,6 +80,7 @@ class TrainingLive extends StatelessWidget {
       final textTheme = Theme.of(context).textTheme;
       final color = Theme.of(context).colorScheme;
       final header = Row(
+        spacing: 8,
         children: [
           Icon(
             link == null
@@ -126,6 +127,7 @@ class TrainingLive extends StatelessWidget {
       );
       Widget metric(String label, String value) => Expanded(
         child: Column(
+          spacing: 8,
           mainAxisSize: MainAxisSize.min,
           children: [
             FittedBox(
@@ -145,6 +147,7 @@ class TrainingLive extends StatelessWidget {
         ),
       );
       final metrics = Row(
+        spacing: 8,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           metric('Выстрелов', '${times.length}'),
@@ -174,11 +177,13 @@ class TrainingLive extends StatelessWidget {
               style: textTheme.labelMedium,
             );
       final table = Column(
+        spacing: 8,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           const Padding(
             padding: EdgeInsets.symmetric(vertical: 8, horizontal: 12),
             child: Row(
+              spacing: 8,
               children: [
                 SizedBox(width: 48, child: Text('№')),
                 Expanded(child: Text('Время, с')),
@@ -205,6 +210,7 @@ class TrainingLive extends StatelessWidget {
                           horizontal: 12,
                         ),
                         child: Row(
+                          spacing: 8,
                           children: [
                             SizedBox(width: 48, child: Text('${i + 1}')),
                             Expanded(
@@ -233,6 +239,7 @@ class TrainingLive extends StatelessWidget {
         return Padding(
           padding: const EdgeInsets.all(12),
           child: Column(
+            spacing: 8,
             children: [
               Text(
                 status,
@@ -244,6 +251,7 @@ class TrainingLive extends StatelessWidget {
                 child: LayoutBuilder(
                   builder: (context, size) {
                     final readout = Column(
+                      spacing: 8,
                       children: [
                         Expanded(child: Center(child: number)),
                         metrics,
@@ -251,6 +259,7 @@ class TrainingLive extends StatelessWidget {
                     );
                     return size.maxWidth >= 600
                         ? Row(
+                            spacing: 8,
                             children: [
                               Expanded(child: readout),
                               const VerticalDivider(width: 24),
@@ -258,6 +267,7 @@ class TrainingLive extends StatelessWidget {
                             ],
                           )
                         : Column(
+                            spacing: 8,
                             children: [
                               Expanded(flex: 3, child: readout),
                               const SizedBox(height: 8),
@@ -276,6 +286,7 @@ class TrainingLive extends StatelessWidget {
       return Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         child: Column(
+          spacing: 8,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             header,
@@ -300,6 +311,7 @@ class TrainingLive extends StatelessWidget {
                       padding: const EdgeInsets.all(8),
                       color: color.surfaceContainerLow,
                       child: Column(
+                        spacing: 8,
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(

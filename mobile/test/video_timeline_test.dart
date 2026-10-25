@@ -24,16 +24,19 @@ void main() {
         ),
       ),
     );
-    expect(find.text('A · Выстрелы'), findsOneWidget);
-    expect(find.text('B · Выстрелы'), findsOneWidget);
-    expect(find.text('? · Кандидаты'), findsOneWidget);
-    expect(find.text('Время от старта, с'), findsOneWidget);
+    expect(find.text('? · Кандидаты'), findsNothing);
+    expect(
+      tester.getSize(find.byType(ShotTimeline)).height,
+      lessThanOrEqualTo(100),
+    );
     final track = find.byKey(const ValueKey('shot-timeline-track'));
     final origin = tester.getTopLeft(track);
-    await tester.tapAt(origin + const Offset(96, 50));
+    await tester.tapAt(origin + const Offset(105, 25));
     expect(seeks.single, closeTo(2.5, .01));
     await tester.drag(find.byType(Slider), const Offset(120, 0));
     expect(seeks.last, greaterThan(2.5));
+    await tester.tap(find.byTooltip('Масштаб дорожки'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('×2'));
     await tester.pumpAndSettle();
     expect(tester.getSize(track).width, 720);
@@ -67,7 +70,7 @@ void main() {
       ),
     );
     expect(tester.widget<Slider>(find.byType(Slider)).value, 0);
-    expect(find.text('B · Выстрелы'), findsOneWidget);
+    expect(find.byKey(const ValueKey('shot-timeline-track')), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
   testWidgets(
@@ -88,11 +91,9 @@ void main() {
           ),
         ),
       );
-      expect(find.text('? · Кандидаты'), findsOneWidget);
+      expect(find.text('? · Кандидаты'), findsNothing);
       expect(
-        find.bySemanticsLabel(
-          RegExp(r'Кандидаты A \(\?\): 0\. Кандидаты B \(\?\): 2\.'),
-        ),
+        find.bySemanticsLabel(RegExp(r'Кандидаты A: 0\. Кандидаты B: 2\.')),
         findsOneWidget,
       );
       expect(tester.takeException(), isNull);

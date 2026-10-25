@@ -130,12 +130,12 @@ void main() {
         );
         await tester.pumpAndSettle();
         expect(hud(false), contains('№2/3'));
-        expect(hud(false), contains('Последний сплит: 0.30 с'));
+        expect(hud(false), contains('Сплит: 0.30 с'));
         expect(hud(false), contains('1.30 с'));
         expect(hud(false), isNot(contains('1.40 с')));
         expect(hud(true), contains('1.20 с'));
         expect(hud(true), contains('№2/2'));
-        expect(hud(true), contains('Последний сплит: 0.20 с'));
+        expect(hud(true), contains('Сплит: 0.20 с'));
         tester.widget<ShotTimeline>(find.byType(ShotTimeline)).onSeek(1.55);
         await tester.pumpAndSettle();
         expect(hud(false), contains('1.30 с'));
@@ -165,6 +165,17 @@ void main() {
         final aRect = tester.getRect(find.byKey(const ValueKey('video-hud-a')));
         final bRect = tester.getRect(find.byKey(const ValueKey('video-hud-b')));
         expect(aRect.right, lessThanOrEqualTo(bRect.left));
+        expect(
+          tester
+              .widget<Container>(find.byKey(const ValueKey('video-hud-a')))
+              .decoration,
+          isNull,
+        );
+        expect(find.text('Пуск'), findsNothing);
+        expect(
+          find.textContaining('Точный кадр зависит от кодека'),
+          findsNothing,
+        );
         expect(aRect.top, closeTo(bRect.top, 1));
         expect(find.byType(ChoiceChip), findsNothing);
         await tester.tap(find.byTooltip('Настройки плеера'));
@@ -177,8 +188,23 @@ void main() {
         );
 
         await tester.pumpAndSettle();
-        await tester.tap(find.byTooltip('Выключить звук A'));
-        await tester.tap(find.byTooltip('Включить звук B'));
+        await tester.tap(find.byTooltip('Настройки плеера'));
+        await tester.pumpAndSettle();
+        await tester.tap(
+          find.ancestor(
+            of: find.text('Звук A'),
+            matching: find.byType(CheckedPopupMenuItem<double>),
+          ),
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(find.byTooltip('Настройки плеера'));
+        await tester.pumpAndSettle();
+        await tester.tap(
+          find.ancestor(
+            of: find.text('Звук B'),
+            matching: find.byType(CheckedPopupMenuItem<double>),
+          ),
+        );
         await tester.pumpAndSettle();
         await tester.tap(find.byKey(const ValueKey('paired-play')));
         await tester.pump();
@@ -188,7 +214,7 @@ void main() {
         await tester.pumpAndSettle();
         await tester.tap(find.byTooltip('Экспорт сравнения A и B'));
         await tester.pumpAndSettle();
-        expect(exported!['mode'], 'sideBySide');
+        expect(exported!['mode'], 'overlay');
         await tester.tap(find.byTooltip('Закрыть полный экран'));
         await tester.pumpAndSettle();
         expect(

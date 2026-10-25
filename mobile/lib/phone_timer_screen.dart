@@ -471,6 +471,7 @@ class _PhoneTimerScreenState extends State<PhoneTimerScreen>
     ValueChanged<double> change, {
     bool enabled = true,
   }) => Column(
+    spacing: 8,
     crossAxisAlignment: CrossAxisAlignment.start,
     children: [
       Text(title),
@@ -696,7 +697,7 @@ class _PhoneTimerScreenState extends State<PhoneTimerScreen>
                   'Сплит: ${(_shots[i] - (i == 0 ? 0 : _shots[i - 1])).toStringAsFixed(2)} с',
                 ),
               ),
-          ],
+          ].expand<Widget>((child) => [child, const SizedBox(height: 8)]).toList(),
         ),
       ),
     ),

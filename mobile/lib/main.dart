@@ -228,6 +228,7 @@ class _TrainingHomeState extends State<TrainingHome>
     child: Padding(
       padding: const EdgeInsets.all(16),
       child: Column(
+        spacing: 8,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Text(title, style: Theme.of(context).textTheme.titleLarge),
@@ -267,6 +268,7 @@ class _TrainingHomeState extends State<TrainingHome>
               : Padding(
                   padding: const EdgeInsets.all(24),
                   child: Column(
+                    spacing: 8,
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Text(
@@ -324,6 +326,7 @@ class _TrainingHomeState extends State<TrainingHome>
       ),
       body: SafeArea(
         child: Row(
+          spacing: 8,
           children: [
             if (MediaQuery.sizeOf(context).width >= 950)
               NavigationRail(
@@ -396,8 +399,15 @@ class _TrainingHomeState extends State<TrainingHome>
     );
   }
 
-  Widget scroll(List<Widget> children) =>
-      ListView(padding: const EdgeInsets.all(12), children: children);
+  Widget scroll(List<Widget> children) => ListView(
+    padding: const EdgeInsets.all(12),
+    children: [
+      for (var i = 0; i < children.length; i++) ...[
+        if (i > 0) const SizedBox(height: 8),
+        children[i],
+      ],
+    ],
+  );
   Widget live() {
     final history = List<Run>.of(data!.runs)
       ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
@@ -420,6 +430,7 @@ class _TrainingHomeState extends State<TrainingHome>
       slivers: [
         SliverToBoxAdapter(
           child: Column(
+            spacing: 8,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Padding(
@@ -431,6 +442,7 @@ class _TrainingHomeState extends State<TrainingHome>
                         busy ||
                         timerSession.links.values.any((l) => l.active != null);
                     return Column(
+                      spacing: 8,
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
                         DropdownButtonFormField<String>(
@@ -507,6 +519,7 @@ class _TrainingHomeState extends State<TrainingHome>
                   vertical: 8,
                 ),
                 child: Column(
+                  spacing: 8,
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     FilledButton.icon(
@@ -546,6 +559,7 @@ class _TrainingHomeState extends State<TrainingHome>
                   vertical: 8,
                 ),
                 child: Row(
+                  spacing: 8,
                   children: [
                     Expanded(
                       child: Text(
@@ -593,6 +607,7 @@ class _TrainingHomeState extends State<TrainingHome>
             final time = run.createdAt.toLocal();
             final checked = selected.contains(run.id);
             return Column(
+              spacing: 8,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 if (index == 0 || date(history[index - 1]) != date(run))
@@ -605,6 +620,7 @@ class _TrainingHomeState extends State<TrainingHome>
                       vertical: 8,
                     ),
                     child: Row(
+                      spacing: 8,
                       children: [
                         Expanded(child: Text(date(run))),
                         IconButton(
@@ -639,6 +655,7 @@ class _TrainingHomeState extends State<TrainingHome>
                             onChanged: (_) => toggle(run),
                           ),
                     title: Column(
+                      spacing: 8,
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
@@ -647,6 +664,7 @@ class _TrainingHomeState extends State<TrainingHome>
                         ),
                         const SizedBox(height: 4),
                         Wrap(
+                          runSpacing: 8,
                           spacing: 12,
                           crossAxisAlignment: WrapCrossAlignment.center,
                           children: [
@@ -744,6 +762,7 @@ class _TrainingHomeState extends State<TrainingHome>
             width: 560,
             child: SingleChildScrollView(
               child: Column(
+                spacing: 8,
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   for (final person in data!.shooters)
@@ -754,6 +773,7 @@ class _TrainingHomeState extends State<TrainingHome>
                             r.stageId == exercise.id,
                       ))
                         Column(
+                          spacing: 8,
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
@@ -988,6 +1008,7 @@ class _TrainingHomeState extends State<TrainingHome>
                     Padding(
                       padding: const EdgeInsets.symmetric(vertical: 12),
                       child: Column(
+                        spacing: 8,
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
@@ -1137,6 +1158,7 @@ class _TrainingHomeState extends State<TrainingHome>
           return Padding(
             padding: const EdgeInsets.symmetric(vertical: 12),
             child: Row(
+              spacing: 8,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 SizedBox(
@@ -1148,6 +1170,7 @@ class _TrainingHomeState extends State<TrainingHome>
                 ),
                 Expanded(
                   child: Column(
+                    spacing: 8,
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
@@ -1301,6 +1324,7 @@ class _TrainingHomeState extends State<TrainingHome>
             width: 400,
             child: SingleChildScrollView(
               child: Column(
+                spacing: 8,
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   for (final isX in [true, false])
@@ -1403,6 +1427,7 @@ class _TrainingHomeState extends State<TrainingHome>
           onChanged: (v) => setState(() => chartStageId = v == '' ? null : v),
         ),
         Wrap(
+          runSpacing: 8,
           spacing: 12,
           children: [
             TextButton.icon(
@@ -1465,6 +1490,7 @@ class _TrainingHomeState extends State<TrainingHome>
                   ),
                   body: SafeArea(
                     child: Column(
+                      spacing: 8,
                       children: [
                         Padding(
                           padding: const EdgeInsets.all(12),
@@ -1507,6 +1533,7 @@ class _TrainingHomeState extends State<TrainingHome>
           (e) => Padding(
             padding: const EdgeInsets.symmetric(vertical: 4),
             child: Row(
+              spacing: 8,
               children: [
                 Icon(
                   e.key >= 5 ? Icons.more_horiz : Icons.horizontal_rule,
@@ -1637,6 +1664,7 @@ class _TrainingHomeState extends State<TrainingHome>
             'Разница HF ${(e.value.hitFactor - base).toStringAsFixed(4)}${base > 0 ? ' / ${((e.value.hitFactor / base - 1) * 100).toStringAsFixed(2)}%' : ''}',
           ),
           Wrap(
+            runSpacing: 8,
             spacing: 12,
             children: [
               OutlinedButton(
@@ -1900,6 +1928,7 @@ class _TrainingHomeState extends State<TrainingHome>
             width: 440,
             child: SingleChildScrollView(
               child: Column(
+                spacing: 8,
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   for (var i = 0; i < fields.length; i++)
@@ -2032,6 +2061,7 @@ class _TrainingHomeState extends State<TrainingHome>
             width: 520,
             child: SingleChildScrollView(
               child: Column(
+                spacing: 8,
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   if (calcIndex == null) ...[
@@ -2113,6 +2143,7 @@ class _TrainingHomeState extends State<TrainingHome>
                     Padding(
                       padding: const EdgeInsets.only(bottom: 12),
                       child: Column(
+                        spacing: 8,
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
@@ -2121,6 +2152,7 @@ class _TrainingHomeState extends State<TrainingHome>
                           ),
                           const SizedBox(height: 4),
                           Row(
+                            spacing: 8,
                             children: [
                               IconButton(
                                 tooltip: 'Уменьшить ${labels[i]}',
@@ -2180,6 +2212,7 @@ class _TrainingHomeState extends State<TrainingHome>
           ),
           actions: [
             Column(
+              spacing: 8,
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
@@ -2228,6 +2261,7 @@ class _TrainingHomeState extends State<TrainingHome>
                     label: const Text('Остальное — Альфы'),
                   ),
                 Wrap(
+                  runSpacing: 8,
                   alignment: WrapAlignment.end,
                   spacing: 8,
                   children: [

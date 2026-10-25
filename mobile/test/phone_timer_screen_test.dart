@@ -163,7 +163,11 @@ void main() {
         MaterialApp(home: PhoneTimerScreen(onSave: (_, _) async => true)),
       );
       await ready(tester);
-      await tester.ensureVisible(find.text('Настройки таймера'));
+      await tester.scrollUntilVisible(
+        find.text('Настройки таймера'),
+        250,
+        scrollable: find.byType(Scrollable).first,
+      );
       await tester.tap(find.text('Настройки таймера'));
       await tester.pumpAndSettle();
       await tester.ensureVisible(find.text('Проверить микрофон'));
@@ -198,7 +202,11 @@ void main() {
       );
       await ready(tester);
       expect(tester.takeException(), isNull);
-      await tester.ensureVisible(find.text('Настройки таймера'));
+      await tester.scrollUntilVisible(
+        find.text('Настройки таймера'),
+        250,
+        scrollable: find.byType(Scrollable).first,
+      );
       await tester.tap(find.text('Настройки таймера'));
       await tester.pumpAndSettle();
       await tester.scrollUntilVisible(

@@ -138,7 +138,6 @@ class _VideoScreenState extends State<VideoScreen> {
 
   bool _exporting = false;
   double _frameStep = .04;
-  bool _hasFrameRate = false;
   double _opacity = .5;
   final _revision = ValueNotifier<int>(0);
 
@@ -364,7 +363,6 @@ class _VideoScreenState extends State<VideoScreen> {
         _overlay = entry['overlay'] == true;
         _opacity = (entry['opacity'] as num? ?? .5).toDouble().clamp(0, 1);
         _frameStep = .04;
-        _hasFrameRate = false;
         _notice =
             'Видео сохранено на устройстве. Укажите старт сигнала и серию.';
       });
@@ -380,7 +378,6 @@ class _VideoScreenState extends State<VideoScreen> {
         if (rate is num && rate.isFinite && rate > 0 && rate <= 240) {
           _changed(() {
             _frameStep = 1 / rate;
-            _hasFrameRate = true;
           });
         }
       } on PlatformException {
@@ -885,7 +882,10 @@ class _VideoScreenState extends State<VideoScreen> {
 
   String _label({bool compare = false}) {
     final run = compare ? _comparisonRun : _run;
-    if (run != null) return _runLabel(run);
+    if (run != null) {
+      final names = widget.shooters.where((s) => s.id == run.shooterId);
+      return names.isEmpty ? 'Без стрелка' : names.first.name;
+    }
     return (compare ? _comparisonEntry : _selected)?['name'] as String? ??
         'Без видео';
   }
@@ -950,7 +950,7 @@ class _VideoScreenState extends State<VideoScreen> {
                 : _selected!['path'],
             'start': _start,
             'times': _times(includeCandidates: true),
-            'primaryLabel': _label(),
+            'primaryLabel': 'A · ${_label()}',
             'mode': compare
                 ? (_overlay && !sideBySide ? 'overlay' : 'sideBySide')
                 : 'single',
@@ -958,7 +958,7 @@ class _VideoScreenState extends State<VideoScreen> {
               'comparisonPath': Uri.parse(_comparison!.dataSource).toFilePath(),
               'comparisonStart': _comparisonStart,
               'comparisonTimes': _times(compare: true, includeCandidates: true),
-              'comparisonLabel': _label(compare: true),
+              'comparisonLabel': 'B · ${_label(compare: true)}',
               'comparisonCorrection':
                   _comparisonOffset - (_comparisonStart - _start),
               'opacity': _opacity,
@@ -1005,16 +1005,7 @@ class _VideoScreenState extends State<VideoScreen> {
         : '—';
     return Container(
       key: ValueKey(compare ? 'video-hud-b' : 'video-hud-a'),
-      decoration: BoxDecoration(
-        color: Colors.black.withValues(alpha: .75),
-        border: Border(
-          left: BorderSide(
-            color: compare ? Colors.amberAccent : Colors.tealAccent,
-            width: 3,
-          ),
-        ),
-      ),
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+      padding: const EdgeInsets.all(6),
       child: Text.rich(
         TextSpan(
           children: [
@@ -1023,28 +1014,55 @@ class _VideoScreenState extends State<VideoScreen> {
               style: const TextStyle(fontSize: 12),
             ),
             TextSpan(text: shotTime, style: const TextStyle(fontSize: 26)),
-            TextSpan(text: '   №${index + 1}/${times.length}\n'),
-            TextSpan(text: 'Последний сплит: $split'),
+            TextSpan(text: '  №${index + 1}/${times.length}\n'),
+            TextSpan(text: 'Сплит: $split'),
           ],
         ),
+        textAlign: compare ? TextAlign.right : TextAlign.left,
         style: const TextStyle(
           color: Colors.white,
           fontSize: 13,
           fontWeight: FontWeight.bold,
           fontFeatures: [FontFeature.tabularFigures()],
+          shadows: [
+            Shadow(color: Colors.black, blurRadius: 3),
+            Shadow(color: Colors.black, offset: Offset(1, 1), blurRadius: 2),
+          ],
         ),
       ),
     );
   }
 
-  Widget _soundButton({required bool compare}) {
-    final player = compare ? _comparison! : _player!;
-    return IconButton(
-      tooltip:
-          '${player.value.volume == 0 ? 'Включить' : 'Выключить'} звук ${compare ? 'B' : 'A'}',
-      color: Colors.white,
-      style: IconButton.styleFrom(backgroundColor: Colors.black54),
-      onPressed: () async {
+  Widget _playerSettings() => PopupMenuButton<double>(
+    tooltip: 'Настройки плеера',
+    icon: const Icon(Icons.settings, color: Colors.white),
+    itemBuilder: (_) => [
+      for (final speed in [.25, .5, 1.0])
+        CheckedPopupMenuItem(
+          value: speed,
+          checked: _speed == speed,
+          child: Text('Скорость $speed×'),
+        ),
+      const PopupMenuDivider(),
+      CheckedPopupMenuItem(
+        value: -1,
+        checked: !_mutedA,
+        child: const Text('Звук A'),
+      ),
+      if (_comparison != null)
+        CheckedPopupMenuItem(
+          value: -2,
+          checked: !_mutedB,
+          child: const Text('Звук B'),
+        ),
+      const PopupMenuItem(value: -3, child: Text('Предыдущий кадр')),
+      const PopupMenuItem(value: -4, child: Text('Следующий кадр')),
+      const PopupMenuItem(value: -5, child: Text('К сигналам таймеров')),
+    ],
+    onSelected: (value) async {
+      if (value == -1 || value == -2) {
+        final compare = value == -2;
+        final player = compare ? _comparison! : _player!;
         final muted = player.value.volume != 0;
         _changed(() {
           if (compare) {
@@ -1054,29 +1072,19 @@ class _VideoScreenState extends State<VideoScreen> {
           }
         });
         await player.setVolume(muted ? 0 : 1);
-      },
-      icon: Icon(player.value.volume == 0 ? Icons.volume_off : Icons.volume_up),
-    );
-  }
-
-  Widget _playerSettings() => PopupMenuButton<double>(
-    tooltip: 'Настройки плеера',
-    icon: const Icon(Icons.settings, color: Colors.white),
-    style: IconButton.styleFrom(backgroundColor: Colors.black54),
-    itemBuilder: (_) => [
-      for (final speed in [.25, .5, 1.0])
-        CheckedPopupMenuItem(
-          value: speed,
-          checked: _speed == speed,
-          child: Text('Скорость $speed×'),
-        ),
-    ],
-    onSelected: (speed) async {
-      _changed(() => _speed = speed);
-      await Future.wait([
-        _player!.setPlaybackSpeed(speed),
-        if (_comparison != null) _comparison!.setPlaybackSpeed(speed),
-      ]);
+      } else if (value == -3 || value == -4) {
+        await _pauseAndSeek(
+          _position + (value == -3 ? -_frameStep : _frameStep),
+        );
+      } else if (value == -5) {
+        if (_readyToCompare) await _fromStart();
+      } else {
+        _changed(() => _speed = value);
+        await Future.wait([
+          _player!.setPlaybackSpeed(value),
+          if (_comparison != null) _comparison!.setPlaybackSpeed(value),
+        ]);
+      }
     },
   );
 
@@ -1091,25 +1099,6 @@ class _VideoScreenState extends State<VideoScreen> {
         : () => _export(compare: _comparison != null, sideBySide: sideBySide),
     icon: const Icon(Icons.ios_share),
   );
-
-  Widget _playerActions({required bool compare, bool fullscreen = false}) =>
-      Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          _soundButton(compare: compare),
-          if (!compare && !fullscreen) ...[
-            _playerSettings(),
-            _exportAction(),
-            IconButton(
-              tooltip: 'Полноэкранный разбор',
-              color: Colors.white,
-              style: IconButton.styleFrom(backgroundColor: Colors.black54),
-              onPressed: _fullscreen,
-              icon: const Icon(Icons.fullscreen),
-            ),
-          ],
-        ],
-      );
 
   Widget _video(
     VideoPlayerController controller, {
@@ -1127,15 +1116,10 @@ class _VideoScreenState extends State<VideoScreen> {
       children: [
         if (fullscreen) Center(child: picture) else picture,
         Positioned(
-          left: 0,
-          right: 0,
-          bottom: 0,
-          child: _hud(controller, compare: compare),
-        ),
-        Positioned(
-          top: 4,
+          left: 4,
           right: 4,
-          child: _playerActions(compare: compare, fullscreen: fullscreen),
+          bottom: 4,
+          child: _hud(controller, compare: compare),
         ),
       ],
     );
@@ -1146,49 +1130,60 @@ class _VideoScreenState extends State<VideoScreen> {
     if (_comparison == null) {
       return _video(player, compare: false, fullscreen: fullscreen);
     }
-    if (_overlay && !fullscreen) {
-      return AspectRatio(
-        aspectRatio: player.value.aspectRatio > 0
-            ? player.value.aspectRatio
-            : 16 / 9,
-        child: Stack(
-          fit: StackFit.expand,
-          children: [
-            FittedBox(
-              fit: BoxFit.contain,
-              child: SizedBox(
-                width: player.value.size.width,
-                height: player.value.size.height,
-                child: VideoPlayer(player),
-              ),
-            ),
-            Opacity(
-              opacity: _opacity,
-              child: FittedBox(
-                fit: BoxFit.contain,
-                child: SizedBox(
-                  width: _comparison!.value.size.width,
-                  height: _comparison!.value.size.height,
-                  child: VideoPlayer(_comparison!),
+    if (_overlay) {
+      return LayoutBuilder(
+        builder: (context, box) {
+          final ratio = player.value.aspectRatio > 0
+              ? player.value.aspectRatio
+              : 16 / 9;
+          final width =
+              box.hasBoundedHeight && box.maxHeight * ratio < box.maxWidth
+              ? box.maxHeight * ratio
+              : box.maxWidth;
+          return AspectRatio(
+            aspectRatio: ratio,
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                FittedBox(
+                  fit: BoxFit.contain,
+                  child: SizedBox(
+                    width: player.value.size.width,
+                    height: player.value.size.height,
+                    child: VideoPlayer(player),
+                  ),
                 ),
-              ),
+                Opacity(
+                  opacity: _opacity,
+                  child: FittedBox(
+                    fit: BoxFit.contain,
+                    child: SizedBox(
+                      width: _comparison!.value.size.width,
+                      height: _comparison!.value.size.height,
+                      child: VideoPlayer(_comparison!),
+                    ),
+                  ),
+                ),
+                Positioned(
+                  left: 4,
+                  bottom: 4,
+                  child: SizedBox(
+                    width: (width / 2 - 8).clamp(1, 240),
+                    child: _hud(player, compare: false),
+                  ),
+                ),
+                Positioned(
+                  right: 4,
+                  bottom: 4,
+                  child: SizedBox(
+                    width: (width / 2 - 8).clamp(1, 240),
+                    child: _hud(_comparison!, compare: true),
+                  ),
+                ),
+              ],
             ),
-            Positioned(
-              left: 0,
-              right: 0,
-              top: 60,
-              child: _hud(player, compare: false),
-            ),
-            Positioned(top: 4, left: 4, child: _soundButton(compare: true)),
-            Positioned(top: 4, right: 4, child: _playerActions(compare: false)),
-            Positioned(
-              left: 0,
-              right: 0,
-              bottom: 0,
-              child: _hud(_comparison!, compare: true),
-            ),
-          ],
-        ),
+          );
+        },
       );
     }
     return LayoutBuilder(
@@ -1243,16 +1238,11 @@ class _VideoScreenState extends State<VideoScreen> {
             : () => _pauseAndSeek(_start + previous.last),
         icon: const Icon(Icons.skip_previous),
       ),
-      IconButton(
-        tooltip: 'К сигналам таймеров',
-        onPressed: _readyToCompare ? _fromStart : null,
-        icon: const Icon(Icons.restart_alt),
-      ),
-      FilledButton.icon(
+      IconButton.filled(
         key: const ValueKey('paired-play'),
+        tooltip: player.value.isPlaying ? 'Пауза' : 'Пуск',
         onPressed: _readyToCompare && !_opening && !_analyzing ? _play : null,
         icon: Icon(player.value.isPlaying ? Icons.pause : Icons.play_arrow),
-        label: Text(player.value.isPlaying ? 'Пауза' : 'Пуск'),
       ),
       IconButton(
         tooltip: 'Следующий выстрел',
@@ -1261,29 +1251,41 @@ class _VideoScreenState extends State<VideoScreen> {
             : () => _pauseAndSeek(_start + next.first),
         icon: const Icon(Icons.skip_next),
       ),
-      IconButton(
-        tooltip: 'Назад ${(_frameStep * 1000).round()} мс',
-        onPressed: () => _pauseAndSeek(_position - _frameStep),
-        icon: const Icon(Icons.keyboard_arrow_left),
-      ),
-      IconButton(
-        tooltip: 'Вперёд ${(_frameStep * 1000).round()} мс',
-        onPressed: () => _pauseAndSeek(_position + _frameStep),
-        icon: const Icon(Icons.keyboard_arrow_right),
-      ),
-      if (fullscreen) ...[_playerSettings(), _exportAction(sideBySide: true)],
+      _playerSettings(),
+      if (fullscreen)
+        _exportAction(sideBySide: !_overlay)
+      else
+        IconButton(
+          tooltip: 'Полноэкранный разбор',
+          onPressed: _fullscreen,
+          icon: const Icon(Icons.fullscreen),
+        ),
     ];
-    return fullscreen
-        ? SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(children: controls),
-          )
-        : Wrap(
-            spacing: 4,
-            runSpacing: 4,
-            crossAxisAlignment: WrapCrossAlignment.center,
-            children: controls,
-          );
+    return Theme(
+      data: Theme.of(context).copyWith(
+        iconButtonTheme: IconButtonThemeData(
+          style: IconButton.styleFrom(
+            minimumSize: const Size(48, 48),
+            foregroundColor: Colors.white,
+            disabledForegroundColor: Colors.white38,
+            padding: const EdgeInsets.all(8),
+            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+          ),
+        ),
+      ),
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: Colors.black87,
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Row(
+          key: const ValueKey('video-player-controls'),
+          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+          spacing: 4,
+          children: controls,
+        ),
+      ),
+    );
   }
 
   Widget _timeline() {
@@ -1291,32 +1293,23 @@ class _VideoScreenState extends State<VideoScreen> {
     return ShotTimeline(
       duration: duration,
       position: (_position - _start).clamp(0, duration),
-      primaryTimes: _times(),
+      primaryTimes: _times(includeCandidates: true),
       comparisonTimes: _comparison == null
           ? const []
-          : _times(compare: true)
+          : _times(compare: true, includeCandidates: true)
                 .map(
                   (t) => t - (_comparisonOffset - (_comparisonStart - _start)),
                 )
                 .toList(),
-      candidates: _runId == null
-          ? _candidates.map((t) => t - _start).toList()
-          : const [],
-      comparisonCandidates: _comparison != null && _comparisonRun == null
-          ? (_comparisonEntry?['candidates'] as List? ?? [])
-                .map(
-                  (value) =>
-                      (value as num).toDouble() - _start - _comparisonOffset,
-                )
-                .toList()
-          : const [],
       onSeek: (value) => _pauseAndSeek(_start + value),
     );
   }
 
   Widget _splitTable() {
-    final a = _times();
-    final b = _comparison == null ? <double>[] : _times(compare: true);
+    final a = _times(includeCandidates: true);
+    final b = _comparison == null
+        ? <double>[]
+        : _times(compare: true, includeCandidates: true);
     final count = a.length > b.length ? a.length : b.length;
     if (count == 0) {
       return const Padding(
@@ -1733,11 +1726,13 @@ class _VideoScreenState extends State<VideoScreen> {
 
     Future<void> seek(double value) =>
         _pauseAndSeek(compare ? value - _comparisonOffset : value);
-    return ExpansionTile(
-      title: Text(
-        'Метки ${compare ? 'B' : 'A'} · ${markers.length} подтверждено · ${candidates.length} кандидатов',
-      ),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      spacing: 8,
       children: [
+        Text(
+          'Метки ${compare ? 'B' : 'A'} · ${markers.length} подтверждено · ${candidates.length} кандидатов',
+        ),
         const Text(
           'Автопоиск может принять эхо, речь и лязг за выстрел. Прослушайте кандидаты и подтвердите нужные.',
         ),
@@ -1820,245 +1815,248 @@ class _VideoScreenState extends State<VideoScreen> {
   @override
   Widget build(BuildContext context) {
     final player = _player;
-    return ListView(
-      padding: const EdgeInsets.all(16),
-      children: [
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
+    final children = <Widget>[
+      Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        children: [
+          FilledButton.icon(
+            onPressed:
+                _busy || _opening || _analyzing || _exporting || !_metadataReady
+                ? null
+                : () => _import(ImageSource.gallery),
+            icon: const Icon(Icons.video_library),
+            label: const Text('Выбрать видео'),
+          ),
+        ],
+      ),
+      if (_busy || _opening || _analyzing || _exporting)
+        const LinearProgressIndicator(),
+      if (_opening)
+        const Text(
+          'Готовим плавный просмотр. Для 4K/HEVC первая подготовка займёт время; исходник сохраняется.',
+        ),
+      if (_analyzing) const Text('Ищем сигнал таймера по звуку…'),
+      if (_exporting)
+        Row(
           children: [
-            FilledButton.icon(
-              onPressed:
-                  _busy ||
-                      _opening ||
-                      _analyzing ||
-                      _exporting ||
-                      !_metadataReady
-                  ? null
-                  : () => _import(ImageSource.gallery),
-              icon: const Icon(Icons.video_library),
-              label: const Text('Выбрать видео'),
-            ),
-          ],
-        ),
-        if (_busy || _opening || _analyzing || _exporting)
-          const LinearProgressIndicator(),
-        if (_opening)
-          const Text(
-            'Готовим плавный просмотр. Для 4K/HEVC первая подготовка займёт время; исходник сохраняется.',
-          ),
-        if (_analyzing) const Text('Ищем сигнал таймера по звуку…'),
-        if (_exporting)
-          Row(
-            children: [
-              const Expanded(child: Text('Создаём MP4 с анализом…')),
-              TextButton(
-                onPressed: () =>
-                    const MethodChannel('pace/audio')
-                        .invokeMethod<void>('cancelExportAnalysis'),
-                child: const Text('Отмена'),
-              ),
-            ],
-          ),
-        const SizedBox(height: 16),
-        if (_videos.isNotEmpty)
-          DropdownButtonFormField<String>(
-            key: ValueKey('video:${_selected?['path']}'),
-            initialValue: _selected?['path'] as String?,
-            isExpanded: true,
-            decoration: const InputDecoration(labelText: 'Видео A'),
-            items: _videos
-                .map(
-                  (v) => DropdownMenuItem(
-                    value: v['path'] as String,
-                    child: Text(
-                      v['name'] as String,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                )
-                .toList(),
-            onChanged: _busy || _opening || _analyzing || _exporting
-                ? null
-                : (path) {
-                    if (path != null) {
-                      _open(_videos.firstWhere((v) => v['path'] == path));
-                    }
-                  },
-          ),
-        Padding(
-          padding: const EdgeInsets.symmetric(vertical: 12),
-          child: Text(_notice),
-        ),
-        if (_loadFailed)
-          OutlinedButton(
-            onPressed: _load,
-            child: const Text('Повторить чтение списка видео'),
-          ),
-        if (player != null) ...[
-          Text(
-            'Сравнить с видео B',
-            style: Theme.of(context).textTheme.titleLarge,
-          ),
-          DropdownButtonFormField<String>(
-            key: ValueKey('comparison:${_selected?['path']}:$_comparisonPath'),
-            initialValue: _videos.any((v) => v['path'] == _comparisonPath)
-                ? _comparisonPath
-                : null,
-            decoration: const InputDecoration(labelText: 'Видео B'),
-            isExpanded: true,
-            items: _videos
-                .map(
-                  (v) => DropdownMenuItem(
-                    value: v['path'] as String,
-                    child: Text(
-                      v['name'] as String,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                )
-                .toList(),
-            onChanged: _busy || _opening || _analyzing || _exporting
-                ? null
-                : (path) {
-                    if (path != null) _openComparison(path);
-                  },
-          ),
-          OutlinedButton(
-            onPressed: _busy || _opening || _analyzing || _exporting
-                ? null
-                : () => _import(ImageSource.gallery, compare: true),
-            child: const Text('Добавить видео B из галереи'),
-          ),
-          Text(
-            _readyToCompare
-                ? 'Общий старт 0.00 с · A: ${_start.toStringAsFixed(2)} с${_comparison != null ? ' · B: ${_comparisonStart.toStringAsFixed(2)} с' : ''}'
-                : 'Для запуска от таймера найдите старт ${!_hasStart(_selected) ? 'A' : 'B'}.',
-          ),
-          OutlinedButton.icon(
-            onPressed: _opening || _analyzing || _exporting
-                ? null
-                : _analyzeBoth,
-            icon: const Icon(Icons.auto_fix_high),
-            label: Text(
-              _comparison == null
-                  ? 'Найти старт по звуку'
-                  : 'Найти старты A и B',
-            ),
-          ),
-          if (_readyToCompare && _playStartPosition > _start + .01)
-            Text(
-              'Начало записи обрезано: общий доступный участок с ${(_playStartPosition - _start).toStringAsFixed(2)} с после сигнала.',
-            ),
-          _viewer(),
-          _transport(),
-          _timeline(),
-          Text(
-            'Стрелки: шаг ${(_frameStep * 1000).toStringAsFixed(1)} мс${_hasFrameRate ? ' по номинальной частоте кадров' : ' · частота кадров не определена'}. Точный кадр зависит от кодека.',
-          ),
-          _splitTable(),
-          const Divider(),
-          _videoSetup(),
-          const Divider(),
-          if (_comparison != null) ...[
-            _videoSetup(compare: true),
-            LayoutBuilder(
-              builder: (context, constraints) => SegmentedButton<bool>(
-                direction:
-                    constraints.maxWidth < 340 ||
-                        MediaQuery.textScalerOf(context).scale(1) > 1.3
-                    ? Axis.vertical
-                    : Axis.horizontal,
-                segments: const [
-                  ButtonSegment(
-                    value: false,
-                    label: Text('Рядом'),
-                    icon: Icon(Icons.view_column),
-                  ),
-                  ButtonSegment(
-                    value: true,
-                    label: Text('Наложение'),
-                    icon: Icon(Icons.layers),
-                  ),
-                ],
-                selected: {_overlay},
-                onSelectionChanged: (v) async {
-                  _changed(() => _overlay = v.first);
-                  await _persist();
-                },
-              ),
-            ),
-            if (_overlay) ...[
-              Text('Прозрачность B: ${(_opacity * 100).round()}%'),
-              Slider(
-                value: _opacity,
-                min: 0,
-                max: 1,
-                divisions: 10,
-                onChanged: (v) => _changed(() => _opacity = v),
-                onChangeEnd: (_) => _persist(),
-              ),
-            ],
-            OutlinedButton(
-              onPressed: () async {
-                final value = await _number(
-                  'Точная поправка B относительно общего старта',
-                  _comparisonOffset - (_comparisonStart - _start),
-                );
-                if (value == null || !mounted) return;
-                _changed(
-                  () => _comparisonOffset = _comparisonStart - _start + value,
-                );
-                await _persist();
-                await _seek(_position);
-              },
-              child: Text(
-                'Поправка B: ${(_comparisonOffset - (_comparisonStart - _start)).toStringAsFixed(2)} с',
-              ),
-            ),
+            const Expanded(child: Text('Создаём MP4 с анализом…')),
             TextButton(
-              onPressed: () async {
-                final old = _comparison;
-                _comparisonGeneration++;
-                _changed(() {
-                  _comparison = null;
-                  _comparisonPath = null;
-                  _comparisonOffset = 0;
-                });
-                await old?.dispose();
-                await _persist();
-              },
-              child: const Text('Убрать B из сравнения'),
+              onPressed: () =>
+                  const MethodChannel('pace/audio')
+                      .invokeMethod<void>('cancelExportAnalysis'),
+              child: const Text('Отмена'),
             ),
           ],
-          const Divider(),
+        ),
+      const SizedBox(height: 16),
+      if (_videos.isNotEmpty)
+        DropdownButtonFormField<String>(
+          key: ValueKey('video:${_selected?['path']}'),
+          initialValue: _selected?['path'] as String?,
+          isExpanded: true,
+          decoration: const InputDecoration(labelText: 'Видео A'),
+          items: _videos
+              .map(
+                (v) => DropdownMenuItem(
+                  value: v['path'] as String,
+                  child: Text(
+                    v['name'] as String,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              )
+              .toList(),
+          onChanged: _busy || _opening || _analyzing || _exporting
+              ? null
+              : (path) {
+                  if (path != null) {
+                    _open(_videos.firstWhere((v) => v['path'] == path));
+                  }
+                },
+        ),
+      Padding(
+        padding: const EdgeInsets.symmetric(vertical: 12),
+        child: Text(_notice),
+      ),
+      if (_loadFailed)
+        OutlinedButton(
+          onPressed: _load,
+          child: const Text('Повторить чтение списка видео'),
+        ),
+      if (player != null) ...[
+        Text(
+          'Сравнить с видео B',
+          style: Theme.of(context).textTheme.titleLarge,
+        ),
+        DropdownButtonFormField<String>(
+          key: ValueKey('comparison:${_selected?['path']}:$_comparisonPath'),
+          initialValue: _videos.any((v) => v['path'] == _comparisonPath)
+              ? _comparisonPath
+              : null,
+          decoration: const InputDecoration(labelText: 'Видео B'),
+          isExpanded: true,
+          items: _videos
+              .map(
+                (v) => DropdownMenuItem(
+                  value: v['path'] as String,
+                  child: Text(
+                    v['name'] as String,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              )
+              .toList(),
+          onChanged: _busy || _opening || _analyzing || _exporting
+              ? null
+              : (path) {
+                  if (path != null) _openComparison(path);
+                },
+        ),
+        OutlinedButton(
+          onPressed: _busy || _opening || _analyzing || _exporting
+              ? null
+              : () => _import(ImageSource.gallery, compare: true),
+          child: const Text('Добавить видео B из галереи'),
+        ),
+        Text(
+          _readyToCompare
+              ? 'Общий старт 0.00 с · A: ${_start.toStringAsFixed(2)} с${_comparison != null ? ' · B: ${_comparisonStart.toStringAsFixed(2)} с' : ''}'
+              : 'Для запуска от таймера найдите старт ${!_hasStart(_selected) ? 'A' : 'B'}.',
+        ),
+        OutlinedButton.icon(
+          onPressed: _opening || _analyzing || _exporting ? null : _analyzeBoth,
+          icon: const Icon(Icons.auto_fix_high),
+          label: Text(
+            _comparison == null ? 'Найти старт по звуку' : 'Найти старты A и B',
+          ),
+        ),
+        if (_readyToCompare && _playStartPosition > _start + .01)
+          Text(
+            'Начало записи обрезано: общий доступный участок с ${(_playStartPosition - _start).toStringAsFixed(2)} с после сигнала.',
+          ),
+        _viewer(),
+        _timeline(),
+        _transport(),
+        _splitTable(),
+        const Divider(),
+        if (_comparison != null) ...[
+          LayoutBuilder(
+            builder: (context, constraints) => SegmentedButton<bool>(
+              direction:
+                  constraints.maxWidth < 340 ||
+                      MediaQuery.textScalerOf(context).scale(1) > 1.3
+                  ? Axis.vertical
+                  : Axis.horizontal,
+              segments: const [
+                ButtonSegment(
+                  value: false,
+                  label: Text('Рядом'),
+                  icon: Icon(Icons.view_column),
+                ),
+                ButtonSegment(
+                  value: true,
+                  label: Text('Наложение'),
+                  icon: Icon(Icons.layers),
+                ),
+              ],
+              selected: {_overlay},
+              onSelectionChanged: (v) async {
+                _changed(() => _overlay = v.first);
+                await _persist();
+              },
+            ),
+          ),
+          if (_overlay) ...[
+            Text('Прозрачность B: ${(_opacity * 100).round()}%'),
+            Slider(
+              value: _opacity,
+              min: 0,
+              max: 1,
+              divisions: 10,
+              onChanged: (v) => _changed(() => _opacity = v),
+              onChangeEnd: (_) => _persist(),
+            ),
+          ],
+          TextButton(
+            onPressed: () async {
+              final old = _comparison;
+              _comparisonGeneration++;
+              _changed(() {
+                _comparison = null;
+                _comparisonPath = null;
+                _comparisonOffset = 0;
+              });
+              await old?.dispose();
+              await _persist();
+            },
+            child: const Text('Убрать B из сравнения'),
+          ),
+        ],
+        const Divider(),
+        FilledButton.icon(
+          onPressed: _exporting || _busy || _opening || _analyzing
+              ? null
+              : _export,
+          icon: const Icon(Icons.ios_share),
+          label: const Text('Экспорт видео A с анализом'),
+        ),
+        const Text(
+          'MP4 с временем, номером выстрела и сплитом. Исходное видео сохраняется.',
+        ),
+        if (_comparison != null) ...[
+          const SizedBox(height: 8),
           FilledButton.icon(
             onPressed: _exporting || _busy || _opening || _analyzing
                 ? null
-                : _export,
-            icon: const Icon(Icons.ios_share),
-            label: const Text('Экспорт видео A с анализом'),
+                : () => _export(compare: true),
+            icon: const Icon(Icons.video_file),
+            label: Text(
+              _overlay ? 'Экспорт наложения A + B' : 'Экспорт сравнения A и B',
+            ),
           ),
           const Text(
-            'MP4 с временем, номером выстрела и сплитом. Исходное видео сохраняется.',
+            'Общий старт, до конца более короткого ролика. Звук из A. Качество просмотра: до 720p на ролик, исходники сохраняются.',
           ),
-          if (_comparison != null) ...[
-            const SizedBox(height: 8),
-            FilledButton.icon(
-              onPressed: _exporting || _busy || _opening || _analyzing
-                  ? null
-                  : () => _export(compare: true),
-              icon: const Icon(Icons.video_file),
-              label: Text(
-                _overlay
-                    ? 'Экспорт наложения A + B'
-                    : 'Экспорт сравнения A и B',
+        ],
+        const SizedBox(height: 8),
+        ExpansionTile(
+          key: const PageStorageKey('video-manual-settings'),
+          title: const Text('Ручная синхронизация и выстрелы'),
+          childrenPadding: const EdgeInsets.only(top: 8),
+          children: [
+            _videoSetup(),
+            if (_comparison != null) ...[
+              _videoSetup(compare: true),
+              OutlinedButton(
+                onPressed: () async {
+                  final value = await _number(
+                    'Точная поправка B относительно общего старта',
+                    _comparisonOffset - (_comparisonStart - _start),
+                  );
+                  if (value == null || !mounted) return;
+                  _changed(
+                    () => _comparisonOffset = _comparisonStart - _start + value,
+                  );
+                  await _persist();
+                  await _seek(_position);
+                },
+                child: Text(
+                  'Поправка B: ${(_comparisonOffset - (_comparisonStart - _start)).toStringAsFixed(2)} с',
+                ),
               ),
-            ),
-            const Text(
-              'Общий старт, до конца более короткого ролика. Звук из A. Качество просмотра: до 720p на ролик, исходники сохраняются.',
-            ),
+            ],
           ],
+        ),
+        _splitTable(),
+      ],
+    ];
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        for (var i = 0; i < children.length; i++) ...[
+          if (i > 0) const SizedBox(height: 8),
+          children[i],
         ],
       ],
     );

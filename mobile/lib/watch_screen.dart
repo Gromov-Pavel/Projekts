@@ -57,7 +57,7 @@ class WatchScreen extends StatelessWidget {
           const Text(
             'Включите связь → на часах нажмите «Подключить» → подтвердите устройство здесь. Подтверждённые часы запоминаются и подключаются автоматически. Повторная сверка нужна после сброса пары.',
           ),
-        ],
+        ].expand<Widget>((child) => [child, const SizedBox(height: 8)]).toList(),
       ),
     ),
   );

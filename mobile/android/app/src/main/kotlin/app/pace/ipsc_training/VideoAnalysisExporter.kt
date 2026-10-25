@@ -167,7 +167,7 @@ class VideoAnalysisExporter(private val activity: Activity) {
         if (mode == "overlay") {
             // Draw both HUDs after blending, so opacity never fades or stacks the text.
             compositionBuilder.setEffects(Effects(emptyList(), listOf(OverlayEffect(listOf(
-                ShotOverlay(runs[0], -lead), ShotOverlay(runs[1], -lead - correction, bottom = true),
+                ShotOverlay(runs[0], -lead, halfWidth = true), ShotOverlay(runs[1], -lead - correction, right = true, halfWidth = true),
             )))))
         }
         val composition = compositionBuilder.build()
@@ -193,7 +193,7 @@ class VideoAnalysisExporter(private val activity: Activity) {
         current.start(composition, file.absolutePath)
     }
 
-    private class ShotOverlay(private val run: Run, private val start: Double, private val bottom: Boolean = false) : CanvasOverlay(true) {
+    private class ShotOverlay(private val run: Run, private val start: Double, private val right: Boolean = false, private val halfWidth: Boolean = false) : CanvasOverlay(true) {
         private val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply { typeface = Typeface.create(Typeface.MONOSPACE, Typeface.BOLD) }
         override fun onDraw(canvas: Canvas, presentationTimeUs: Long) {
             canvas.drawColor(Color.TRANSPARENT, PorterDuff.Mode.CLEAR)
@@ -203,23 +203,23 @@ class VideoAnalysisExporter(private val activity: Activity) {
             val split = if (shot > 0) run.times[shot - 1] - if (shot > 1) run.times[shot - 2] else 0.0 else 0.0
             val size = (canvas.width * .034f).coerceIn(16f, 64f)
             paint.textSize = size
-            val top = if (bottom) canvas.height - size * 4.2f else 0f
             val pad = size * .45f
-            paint.color = Color.argb(190, 0, 0, 0)
-            canvas.drawRect(0f, top, canvas.width.toFloat(), top + size * 4.2f, paint)
+            val width = (if (halfWidth) canvas.width / 2f else canvas.width.toFloat()) - pad * 2
+            val top = canvas.height - size * 4.4f
             paint.color = Color.WHITE
-            paint.textSize = size * .8f
-            val label = android.text.TextUtils.ellipsize(run.label, android.text.TextPaint(paint), canvas.width - pad * 2, android.text.TextUtils.TruncateAt.END).toString()
-            canvas.drawText(label, pad, top + size * .95f, paint)
+            paint.setShadowLayer(size * .1f, 1f, 1f, Color.BLACK)
+            fun text(value: String, baseline: Float, scale: Float) {
+                paint.textSize = size * scale
+                paint.textSize *= min(1f, width / max(1f, paint.measureText(value)))
+                val x = if (right) canvas.width - pad - paint.measureText(value) else pad
+                canvas.drawText(value, x, top + size * baseline, paint)
+            }
+            val label = android.text.TextUtils.ellipsize(run.label, android.text.TextPaint(paint), width, android.text.TextUtils.TruncateAt.END).toString()
+            text(label, .95f, .8f)
             val timer = if (shot == 0) "—" else String.format(Locale.US, "%.2f s", run.times[shot - 1])
-            paint.textSize = size * 1.5f
-            paint.textSize *= min(1f, (canvas.width - pad * 2) / max(1f, paint.measureText(timer)))
-            canvas.drawText(timer, pad, top + size * 2.5f, paint)
+            text(timer, 2.5f, 1.5f)
             val splitText = if (shot == 0) "—" else String.format(Locale.US, "%.2f", split)
-            val metrics = "#$shot/${run.times.size}  SPLIT $splitText"
-            paint.textSize = size
-            paint.textSize *= min(1f, (canvas.width - pad * 2) / max(1f, paint.measureText(metrics)))
-            canvas.drawText(metrics, pad, top + size * 3.7f, paint)
+            text("#$shot/${run.times.size}  SPLIT $splitText", 3.7f, .8f)
         }
     }
 

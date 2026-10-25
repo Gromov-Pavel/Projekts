@@ -151,13 +151,16 @@ void main() {
         await tester.tap(find.text('Clip A').last);
         await settleIO(tester);
         await tester.scrollUntilVisible(
-          find.text('A · Выстрелы'),
+          find.byKey(const ValueKey('shot-timeline-track')),
           250,
           scrollable: find.byType(Scrollable).first,
         );
         await tester.pumpAndSettle();
-        expect(find.text('A · Выстрелы'), findsOneWidget);
-        expect(find.text('B · Выстрелы'), findsOneWidget);
+        expect(
+          find.byKey(const ValueKey('shot-timeline-track')),
+          findsOneWidget,
+        );
+
         expect(tester.takeException(), isNull);
         await tester.scrollUntilVisible(
           find.byTooltip('Следующий выстрел'),
@@ -184,6 +187,13 @@ void main() {
         expect(find.byTooltip('Закрыть полный экран'), findsOneWidget);
         expect(tester.takeException(), isNull);
         await tester.tap(find.byTooltip('Закрыть полный экран'));
+        await tester.pumpAndSettle();
+        await tester.scrollUntilVisible(
+          find.text('Ручная синхронизация и выстрелы'),
+          300,
+          scrollable: find.byType(Scrollable).first,
+        );
+        await tester.tap(find.text('Ручная синхронизация и выстрелы'));
         await tester.pumpAndSettle();
         final startB = find.text('Старт: 8.00 с');
         await tester.scrollUntilVisible(
@@ -214,7 +224,7 @@ void main() {
         final export = find.text('Экспорт сравнения A и B');
         await tester.scrollUntilVisible(
           export,
-          400,
+          -400,
           scrollable: find.byType(Scrollable).first,
         );
         await tester.pumpAndSettle();
@@ -294,12 +304,18 @@ void main() {
         await tester.tap(find.text('Без таймера · метки по видео').last);
         await settleIO(tester);
         final editor = find.textContaining('Метки B ·');
-        await tester.ensureVisible(editor);
-        await tester.pumpAndSettle();
-        await tester.tap(editor);
+        await tester.scrollUntilVisible(
+          editor,
+          250,
+          scrollable: find.byType(Scrollable).first,
+        );
         await tester.pumpAndSettle();
         final candidate = find.text('Кандидат · 0.30 с');
-        await tester.ensureVisible(candidate);
+        await tester.scrollUntilVisible(
+          candidate,
+          200,
+          scrollable: find.byType(Scrollable).first,
+        );
         await tester.pumpAndSettle();
         await tester.tap(candidate);
         await tester.pumpAndSettle();
