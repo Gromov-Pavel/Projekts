@@ -186,7 +186,7 @@ void main() {
             await tester.tap(play);
             await tester.pump();
             expect(platform.volumes[0], 1.0);
-            expect(platform.volumes[1], 0.0);
+            expect(platform.volumes[1], 1.0);
             await tester.tap(play);
             await tester.pumpAndSettle();
             final bStart = find.text('Старт: 0.00 с');

@@ -4,6 +4,9 @@ import 'dart:convert';
 import 'package:file_picker/file_picker.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+
+import 'shot_times_editor.dart';
 
 import 'timers_screen.dart';
 import 'timer_session.dart';
@@ -24,6 +27,7 @@ class PaceApp extends StatelessWidget {
   final TrainingStore? store;
   @override
   Widget build(BuildContext context) => MaterialApp(
+    restorationScopeId: 'ipsc',
     debugShowCheckedModeBanner: false,
     title: 'IPSC тренировОчка',
     theme: ThemeData(
@@ -59,7 +63,7 @@ class TrainingHome extends StatefulWidget {
 }
 
 class _TrainingHomeState extends State<TrainingHome>
-    with WidgetsBindingObserver {
+    with WidgetsBindingObserver, RestorationMixin {
   late final store = widget.store ?? TrainingStore();
   AppData? data;
   TimerSession? _timerSession;
@@ -96,12 +100,49 @@ class _TrainingHomeState extends State<TrainingHome>
     WidgetsBinding.instance.removeObserver(this);
     _watchBridge?.dispose();
     _timerSession?.dispose();
+    _restoredPage.dispose();
+    _restoredUi.dispose();
     super.dispose();
   }
 
   String? loadError;
   bool busy = false;
-  int page = 0;
+  final _restoredPage = RestorableInt(0);
+  final _restoredUi = RestorableString('{}');
+  final _openedPages = <int>{0};
+  final _pageBuckets = List.generate(7, (_) => PageStorageBucket());
+  int get page => _restoredPage.value;
+  set page(int value) => _restoredPage.value = value;
+  @override
+  String get restorationId => 'training-home';
+  @override
+  void restoreState(RestorationBucket? oldBucket, bool initialRestore) {
+    registerForRestoration(_restoredPage, 'page');
+    registerForRestoration(_restoredUi, 'ui');
+    try {
+      final ui = jsonDecode(_restoredUi.value) as Map;
+      selected.addAll(
+        (ui['selected'] as List? ?? []).whereType<String>().take(10),
+      );
+      if (['Время', 'Выстрел', 'Сплит'].contains(ui['x'])) {
+        xMetric = ui['x'] as String;
+      }
+      if (['Время', 'Выстрел', 'Сплит'].contains(ui['y'])) {
+        yMetric = ui['y'] as String;
+      }
+      chartShooterId = ui['chartShooter'] as String?;
+      chartStageId = ui['chartStage'] as String?;
+      chartDay = DateTime.tryParse(ui['chartDay'] as String? ?? '');
+      trainingShooterId = ui['trainingShooter'] as String?;
+      trainingStageId = ui['trainingStage'] as String?;
+    } catch (_) {
+      /* Keep safe defaults for unavailable restoration data. */
+    }
+  }
+
+  late final Future<String?> _version = const MethodChannel('pace/audio')
+      .invokeMethod<String>('appVersion')
+      .catchError((Object _) => '—');
   final selected = <String>{};
   final collapsedDates = <String>{};
   bool resultsByStage = false;
@@ -137,6 +178,19 @@ class _TrainingHomeState extends State<TrainingHome>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     _watchBridge?.foreground(state == AppLifecycleState.resumed);
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.hidden) {
+      _restoredUi.value = jsonEncode({
+        'selected': selected.toList(),
+        'x': xMetric,
+        'y': yMetric,
+        'chartShooter': chartShooterId,
+        'chartStage': chartStageId,
+        'chartDay': chartDay?.toIso8601String(),
+        'trainingShooter': trainingShooterId,
+        'trainingStage': trainingStageId,
+      });
+    }
   }
 
   Future<void> _openPhoneTimer() async {
@@ -224,14 +278,25 @@ class _TrainingHomeState extends State<TrainingHome>
     icon: Icon(icon),
     label: Text(text),
   );
-  Widget section(String title, List<Widget> children) => Card(
+  Widget section(String title, List<Widget> children, {Widget? action}) => Card(
     child: Padding(
       padding: const EdgeInsets.all(16),
       child: Column(
         spacing: 8,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text(title, style: Theme.of(context).textTheme.titleLarge),
+          Row(
+            spacing: 8,
+            children: [
+              Flexible(
+                child: Text(
+                  title,
+                  style: Theme.of(context).textTheme.titleLarge,
+                ),
+              ),
+              ?action,
+            ],
+          ),
           const SizedBox(height: 16),
           ...children,
         ],
@@ -291,7 +356,7 @@ class _TrainingHomeState extends State<TrainingHome>
         ),
       );
     }
-    final content = <Widget Function()>[
+    final builders = <Widget Function()>[
       live,
       runs,
       match,
@@ -299,7 +364,21 @@ class _TrainingHomeState extends State<TrainingHome>
       calculator,
       video,
       settings,
-    ][page]();
+    ];
+    _openedPages.add(page);
+    final content = IndexedStack(
+      index: page,
+      children: [
+        for (var i = 0; i < builders.length; i++)
+          _openedPages.contains(i)
+              ? PageStorage(
+                  key: ValueKey('page-$i'),
+                  bucket: _pageBuckets[i],
+                  child: builders[i](),
+                )
+              : const SizedBox.shrink(),
+      ],
+    );
     final icons = [
       Icons.timer,
       Icons.history,
@@ -400,6 +479,7 @@ class _TrainingHomeState extends State<TrainingHome>
   }
 
   Widget scroll(List<Widget> children) => ListView(
+    key: const PageStorageKey('page-scroll'),
     padding: const EdgeInsets.all(12),
     children: [
       for (var i = 0; i < children.length; i++) ...[
@@ -765,7 +845,7 @@ class _TrainingHomeState extends State<TrainingHome>
                 spacing: 8,
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  for (final person in data!.shooters)
+                  for (final person in data!.matchShooters)
                     for (final exercise in data!.stages)
                       if (data!.matchRuns.any(
                         (r) =>
@@ -868,7 +948,7 @@ class _TrainingHomeState extends State<TrainingHome>
     try {
       await exportTraining(
         AppData(
-          shooters: data!.shooters,
+          shooters: data!.matchShooters,
           stages: data!.stages,
           runs: data!.matchRuns,
         ),
@@ -952,7 +1032,11 @@ class _TrainingHomeState extends State<TrainingHome>
         .where((s) => archive.stageIds.contains(s.id))
         .toList();
     final runs = snapshot.runs
-        .where((r) => archive.stageIds.contains(r.stageId))
+        .where(
+          (r) =>
+              archive.stageIds.contains(r.stageId) &&
+              !archive.excludedShooterIds.contains(r.shooterId),
+        )
         .toList();
     String? stageId;
     await Navigator.push(
@@ -1078,7 +1162,7 @@ class _TrainingHomeState extends State<TrainingHome>
         .where((r) => stages.any((s) => s.id == r.stageId))
         .toList();
     final totals = matchTotals(stages, runs);
-    final ranking = [...data!.shooters]
+    final ranking = [...data!.matchShooters]
       ..sort((a, b) => (totals[b.id] ?? 0).compareTo(totals[a.id] ?? 0));
     final best = totals.values.fold<double>(0, (a, b) => a > b ? a : b);
     return scroll([
@@ -1096,10 +1180,34 @@ class _TrainingHomeState extends State<TrainingHome>
       ]),
       section('Участники', [
         button('Добавить стрелка', editShooter),
-        ...data!.shooters.map(
+        if (data!.matchExcludedShooters.isNotEmpty)
+          PopupMenuButton<String>(
+            tooltip: 'Вернуть стрелка в матч',
+            child: const Padding(
+              padding: EdgeInsets.all(12),
+              child: Text('Вернуть стрелка в матч'),
+            ),
+            itemBuilder: (_) => data!.shooters
+                .where((s) => data!.matchExcludedShooters.contains(s.id))
+                .map((s) => PopupMenuItem(value: s.id, child: Text(s.name)))
+                .toList(),
+            onSelected: (id) =>
+                change((d) => d.matchExcludedShooters.remove(id)),
+          ),
+        ...data!.matchShooters.map(
           (s) => ListTile(
             title: Text(s.name),
-            trailing: const Icon(Icons.edit),
+            trailing: IconButton(
+              tooltip: 'Удалить из матча',
+              icon: const Icon(Icons.person_remove_outlined),
+              onPressed: () async {
+                if (await confirm(
+                  'Убрать ${s.name} из текущего матча? История проходов сохранится.',
+                )) {
+                  await change((d) => d.matchExcludedShooters.add(s.id));
+                }
+              },
+            ),
             onTap: () => editShooter(existing: s),
           ),
         ),
@@ -1462,93 +1570,116 @@ class _TrainingHomeState extends State<TrainingHome>
         ),
         const Text('Фильтры скрывают линии и проходы, сохраняя ваш выбор.'),
       ]),
-      section('Сравнение проходов · ${selected.length}/10', [
-        Align(
-          alignment: Alignment.centerRight,
-          child: IconButton(
-            tooltip: 'Настройки графика',
-            icon: const Icon(Icons.settings),
-            onPressed: chartSettings,
+      section(
+        'График',
+        [
+          Text('X: ${metricLabel(xMetric)} · Y: ${metricLabel(yMetric)}'),
+          const SizedBox(height: 16),
+          SizedBox(
+            height: 300,
+            child: chartRuns.isEmpty
+                ? const Center(
+                    child: Text(
+                      'Выберите проходы с временами отдельных выстрелов ниже.',
+                    ),
+                  )
+                : graphPlot(chartRuns, colors),
           ),
-        ),
-        Text('X: ${metricLabel(xMetric)} · Y: ${metricLabel(yMetric)}'),
-        const SizedBox(height: 16),
-        if (chartRuns.isEmpty)
-          const Text('Выберите проходы с временами отдельных выстрелов ниже.')
-        else
-          SizedBox(height: 300, child: graphPlot(chartRuns, colors)),
-        if (chartRuns.isNotEmpty)
           OutlinedButton.icon(
             icon: const Icon(Icons.fullscreen),
             label: const Text('График на весь экран'),
-            onPressed: () => Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (c) => Scaffold(
-                  appBar: AppBar(
-                    title: Text('Сравнение ${chartRuns.length} проходов'),
-                  ),
-                  body: SafeArea(
-                    child: Column(
-                      spacing: 8,
-                      children: [
-                        Padding(
-                          padding: const EdgeInsets.all(12),
-                          child: Text(
-                            'X: ${metricLabel(xMetric)} · Y: ${metricLabel(yMetric)}',
-                          ),
-                        ),
-                        Expanded(
-                          child: Padding(
-                            padding: const EdgeInsets.fromLTRB(12, 12, 20, 12),
-                            child: graphPlot(chartRuns, colors),
-                          ),
-                        ),
-                        SizedBox(
-                          height: 80,
-                          child: ListView(
+            onPressed: chartRuns.isEmpty
+                ? null
+                : () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (c) => Scaffold(
+                        appBar: AppBar(title: const Text('График')),
+                        body: SafeArea(
+                          child: Column(
+                            spacing: 8,
                             children: [
-                              for (var i = 0; i < chartRuns.length; i++)
-                                ListTile(
-                                  dense: true,
-                                  leading: Icon(
-                                    Icons.horizontal_rule,
-                                    color: colors[i],
-                                  ),
-                                  title: Text(
-                                    '${shooter(chartRuns[i].shooterId)} · ${chartRuns[i].totalTime.toStringAsFixed(2)} с',
-                                  ),
+                              Padding(
+                                padding: const EdgeInsets.all(12),
+                                child: Text(
+                                  'X: ${metricLabel(xMetric)} · Y: ${metricLabel(yMetric)}',
                                 ),
+                              ),
+                              Expanded(
+                                child: Padding(
+                                  padding: const EdgeInsets.fromLTRB(
+                                    12,
+                                    12,
+                                    20,
+                                    12,
+                                  ),
+                                  child: graphPlot(chartRuns, colors),
+                                ),
+                              ),
+                              SizedBox(
+                                height: 80,
+                                child: ListView(
+                                  children: [
+                                    for (var i = 0; i < chartRuns.length; i++)
+                                      ListTile(
+                                        dense: true,
+                                        leading: Icon(
+                                          Icons.horizontal_rule,
+                                          color: colors[i],
+                                        ),
+                                        title: Text(
+                                          '${shooter(chartRuns[i].shooterId)} · ${chartRuns[i].totalTime.toStringAsFixed(2)} с',
+                                        ),
+                                      ),
+                                  ],
+                                ),
+                              ),
                             ],
                           ),
                         ),
-                      ],
+                      ),
                     ),
                   ),
-                ),
-              ),
+          ),
+          SizedBox(
+            height: 80,
+            child: ListView(
+              primary: false,
+              children: chartRuns
+                  .asMap()
+                  .entries
+                  .map(
+                    (e) => Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 4),
+                      child: Row(
+                        spacing: 8,
+                        children: [
+                          Icon(
+                            e.key >= 5
+                                ? Icons.more_horiz
+                                : Icons.horizontal_rule,
+                            color: colors[e.key],
+                          ),
+                          Expanded(
+                            child: Text(
+                              '${shooter(e.value.shooterId)} · ${stage(e.value.stageId)} · ${e.value.totalTime.toStringAsFixed(2)} с · ${e.value.createdAt.toLocal().toString().split('.').first}',
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  )
+                  .toList(),
             ),
           ),
-        ...chartRuns.asMap().entries.map(
-          (e) => Padding(
-            padding: const EdgeInsets.symmetric(vertical: 4),
-            child: Row(
-              spacing: 8,
-              children: [
-                Icon(
-                  e.key >= 5 ? Icons.more_horiz : Icons.horizontal_rule,
-                  color: colors[e.key],
-                ),
-                Expanded(
-                  child: Text(
-                    '${shooter(e.value.shooterId)} · ${stage(e.value.stageId)} · ${e.value.totalTime.toStringAsFixed(2)} с · ${e.value.createdAt.toLocal().toString().split('.').first}',
-                  ),
-                ),
-              ],
-            ),
-          ),
+        ],
+        action: IconButton(
+          tooltip: 'Настройки графика',
+          icon: const Icon(Icons.settings),
+          onPressed: chartSettings,
         ),
-      ]),
+      ),
+
       section('Выбрать проходы', [
         ...data!.runs.reversed
             .where((r) => r.times.isNotEmpty && chartMatches(r))
@@ -1573,36 +1704,6 @@ class _TrainingHomeState extends State<TrainingHome>
               ),
             ),
       ]),
-      if (chartRuns.isNotEmpty)
-        section('Таблица выстрелов', [
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: DataTable(
-              columns: const [
-                DataColumn(label: Text('Проход')),
-                DataColumn(label: Text('Выстрел')),
-                DataColumn(label: Text('От старта, с')),
-                DataColumn(label: Text('Сплит, с')),
-              ],
-              rows: [
-                for (final r in chartRuns)
-                  for (var i = 0; i < r.times.length; i++)
-                    DataRow(
-                      cells: [
-                        DataCell(
-                          Text(
-                            '${shooter(r.shooterId)} / ${r.totalTime.toStringAsFixed(2)}',
-                          ),
-                        ),
-                        DataCell(Text('${i + 1}')),
-                        DataCell(Text(r.times[i].toStringAsFixed(2))),
-                        DataCell(Text(r.splits[i].toStringAsFixed(2))),
-                      ],
-                    ),
-              ],
-            ),
-          ),
-        ]),
     ]);
   }
 
@@ -1753,14 +1854,10 @@ class _TrainingHomeState extends State<TrainingHome>
         ],
       ),
     ]),
-    section('Сохранность', [
-      const Text(
-        'Данные хранятся на этом устройстве. Экспортируйте JSON перед удалением приложения. JSON пока содержит результаты и историю, без видео. XLSX/PDF содержат таблицу проходов. Сетевой обмен, права тренера, публичный экран и пакет с медиа ещё в разработке.',
-      ),
-    ]),
-    section('Версия разработки', [
-      const Text(
-        'Android · IPSC тренировОчка 0.3.1\nТаймеры BLE, фон, микрофонный таймер и рендеринг видео пока не квалифицированы. Ручной ввод и импорт не заменяют аппаратную проверку.',
+    section('Версия', [
+      FutureBuilder<String?>(
+        future: _version,
+        builder: (_, snapshot) => Text(snapshot.data ?? '—'),
       ),
     ]),
   ]);
@@ -2139,6 +2236,8 @@ class _TrainingHomeState extends State<TrainingHome>
                       decoration: InputDecoration(labelText: labels[0]),
                     ),
                   ),
+                  ShotTimesEditor(controller: fields[7]),
+                  const SizedBox(height: 12),
                   for (var i = 1; i <= 6; i++)
                     Padding(
                       padding: const EdgeInsets.only(bottom: 12),
@@ -2192,20 +2291,6 @@ class _TrainingHomeState extends State<TrainingHome>
                         ],
                       ),
                     ),
-                  ExpansionTile(
-                    title: const Text('Времена выстрелов'),
-                    children: [
-                      TextField(
-                        controller: fields[7],
-                        maxLines: 3,
-                        keyboardType: TextInputType.multiline,
-                        decoration: InputDecoration(labelText: labels[7]),
-                      ),
-                    ],
-                  ),
-                  const Text(
-                    'Если указаны выстрелы, итоговое время берётся по последнему. Дробная часть — через точку.',
-                  ),
                 ],
               ),
             ),

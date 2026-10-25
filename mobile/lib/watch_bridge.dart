@@ -90,7 +90,9 @@ class WatchBridge extends ChangeNotifier {
   Uint8List? _lastPublished;
   Future<void> _writes = Future.value();
   bool get controllable => phone
-      ? _foreground &&
+      ? (_foreground ||
+                phase == WatchPhase.running ||
+                phase == WatchPhase.preparing) &&
             ((_phoneCommand != null && _phoneCanControl) ||
                 (_phoneCommand == null && _phoneLauncher != null))
       : session.canRemoteControl(session.selected);
@@ -403,7 +405,9 @@ class WatchBridge extends ChangeNotifier {
       if (!phone || run != raw['run']) {
         throw StateError('Источник изменился; повторите команду');
       }
-      if (!_foreground || _phoneCommand == null || !_phoneCanControl) {
+      if ((!_foreground && raw['op'] == 1) ||
+          _phoneCommand == null ||
+          !_phoneCanControl) {
         throw StateError('Откройте готовый телефонный таймер');
       }
       await _phoneCommand!(

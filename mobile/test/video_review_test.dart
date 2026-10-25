@@ -163,12 +163,14 @@ void main() {
 
         expect(tester.takeException(), isNull);
         await tester.scrollUntilVisible(
-          find.byTooltip('Следующий выстрел'),
+          find.byTooltip('Настройки плеера'),
           -200,
           scrollable: find.byType(Scrollable).first,
         );
         await tester.pumpAndSettle();
-        await tester.tap(find.byTooltip('Следующий выстрел'));
+        await tester.tap(find.byTooltip('Настройки плеера'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Следующий выстрел'));
         await tester.pumpAndSettle();
         expect(platform.positions[0], const Duration(milliseconds: 2800));
         expect(platform.positions[1], const Duration(milliseconds: 8800));
@@ -280,12 +282,14 @@ void main() {
         expect(afterEdit[0]['comparisonOffset'], 4.0);
         await selectPrimary('b', 'Clip A');
         await tester.scrollUntilVisible(
-          find.byTooltip('Следующий выстрел'),
+          find.byTooltip('Настройки плеера'),
           250,
           scrollable: find.byType(Scrollable).first,
         );
         await tester.pumpAndSettle();
-        await tester.tap(find.byTooltip('Следующий выстрел'));
+        await tester.tap(find.byTooltip('Настройки плеера'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Следующий выстрел'));
         await tester.pumpAndSettle();
         expect(platform.positions[3], const Duration(milliseconds: 2800));
         expect(platform.positions[4], const Duration(milliseconds: 6800));

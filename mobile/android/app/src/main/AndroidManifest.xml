@@ -9,6 +9,7 @@
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
     <uses-feature android:name="android.hardware.camera" android:required="false" />
     <!-- Required by the authenticated on-device Zepp loopback bridge. -->
     <uses-permission android:name="android.permission.INTERNET" />
@@ -20,6 +21,8 @@
         android:label="IPSC тренировОчка"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
+        <service android:name=".PhoneTimerService" android:exported="false"
+            android:stopWithTask="true" android:foregroundServiceType="microphone" />
         <service
             android:name=".TimerConnectionService"
             android:exported="false"

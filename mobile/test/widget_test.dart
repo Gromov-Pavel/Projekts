@@ -288,7 +288,7 @@ void main() {
     await tester.ensureVisible(graph);
     await tester.tap(graph);
     await tester.pumpAndSettle();
-    expect(find.text('Сравнение проходов · 0/10'), findsOneWidget);
+    expect(find.text('График'), findsOneWidget);
     await tester.scrollUntilVisible(
       find.byType(CheckboxListTile),
       250,
@@ -299,7 +299,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.byType(CheckboxListTile).first);
     await tester.pumpAndSettle();
-    expect(find.text('Сравнение проходов · 1/10'), findsOneWidget);
+    expect(find.text('График'), findsOneWidget);
     expect(
       find.text('X: Время от старта, с · Y: Номер выстрела'),
       findsOneWidget,
@@ -352,7 +352,7 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(compare);
       await tester.pumpAndSettle();
-      expect(find.text('Сравнение проходов · 2/10'), findsOneWidget);
+      expect(find.text('График'), findsOneWidget);
       expect(tester.takeException(), isNull);
     },
   );
@@ -469,6 +469,104 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byType(TrainingLive), findsOneWidget);
     expect(find.text('Тренировка'), findsWidgets);
+    expect(tester.takeException(), isNull);
+  });
+  testWidgets(
+    'first chart selection keeps its scroll position; background restores the chosen screen',
+    (tester) async {
+      final store = MemoryStore(
+        AppData(
+          runs: [
+            Run(id: 'r', times: [1, 2]),
+          ],
+        ),
+      );
+      await tester.pumpWidget(PaceApp(store: store));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Графики'));
+      await tester.pumpAndSettle();
+      final check = find.byType(CheckboxListTile);
+      await tester.scrollUntilVisible(
+        check,
+        250,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.pumpAndSettle();
+      final before = tester.getTopLeft(check).dy;
+      await tester.tap(check);
+      await tester.pumpAndSettle();
+      expect(tester.getTopLeft(check).dy, closeTo(before, 1));
+      expect(find.text('Таблица выстрелов'), findsNothing);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+      await tester.pump();
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await tester.pump();
+      await tester.restartAndRestore();
+      await tester.pumpAndSettle();
+      expect(find.text('Графики'), findsWidgets);
+      await tester.scrollUntilVisible(
+        find.byType(CheckboxListTile),
+        250,
+        scrollable: find.byType(Scrollable).first,
+      );
+      expect(
+        tester
+            .widget<CheckboxListTile>(find.byType(CheckboxListTile).first)
+            .value,
+        isTrue,
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
+  testWidgets('participant removal and return affect only current match', (
+    tester,
+  ) async {
+    final store = MemoryStore(
+      AppData(
+        shooters: [
+          Shooter(id: 'a', name: 'Alpha'),
+          Shooter(id: 'b', name: 'Bravo'),
+        ],
+        stages: [Stage(id: 'st', name: 'Stage')],
+        runs: [
+          Run(id: 'r', shooterId: 'a', stageId: 'st', times: [1]),
+        ],
+      ),
+    );
+    await tester.pumpWidget(PaceApp(store: store));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Матч'));
+    await tester.pumpAndSettle();
+    final participant = find.widgetWithText(ListTile, 'Alpha');
+    await tester.scrollUntilVisible(
+      participant,
+      200,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.descendant(
+        of: participant,
+        matching: find.byTooltip('Удалить из матча'),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Продолжить'));
+    await tester.pumpAndSettle();
+    expect(store.data.matchExcludedShooters, {'a'});
+    expect(store.data.runs.single.id, 'r');
+    expect(store.data.shooters.length, 2);
+    await tester.scrollUntilVisible(
+      find.text('Вернуть стрелка в матч'),
+      -200,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.tap(find.text('Вернуть стрелка в матч'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Alpha').last);
+    await tester.pumpAndSettle();
+    expect(store.data.matchExcludedShooters, isEmpty);
+    expect(store.data.matchRuns.length, 1);
     expect(tester.takeException(), isNull);
   });
 }

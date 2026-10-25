@@ -102,7 +102,7 @@ class VideoScreen extends StatefulWidget {
   State<VideoScreen> createState() => _VideoScreenState();
 }
 
-class _VideoScreenState extends State<VideoScreen> {
+class _VideoScreenState extends State<VideoScreen> with WidgetsBindingObserver {
   final _videos = <Map<String, dynamic>>[];
   VideoPlayerController? _player;
   VideoPlayerController? _comparison;
@@ -112,7 +112,7 @@ class _VideoScreenState extends State<VideoScreen> {
   double _comparisonOffset = 0;
   double _speed = 1;
   bool _mutedA = false;
-  bool _mutedB = true;
+  bool _mutedB = false;
   bool _fullscreenOpen = false;
   bool _busy = false;
   bool _opening = false;
@@ -164,6 +164,7 @@ class _VideoScreenState extends State<VideoScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _load();
   }
 
@@ -198,6 +199,11 @@ class _VideoScreenState extends State<VideoScreen> {
           ..addAll(data);
         _metadataReady = true;
       });
+      final recent = data.where((entry) => entry['lastViewed'] is int).toList()
+        ..sort(
+          (a, b) => (b['lastViewed'] as int).compareTo(a['lastViewed'] as int),
+        );
+      if (recent.isNotEmpty && mounted) await _open(recent.first);
     } catch (error) {
       if (!mounted) return;
       _changed(() {
@@ -218,6 +224,7 @@ class _VideoScreenState extends State<VideoScreen> {
     }
     if (_selected != null) {
       _selected!.addAll({
+        'lastViewed': DateTime.now().millisecondsSinceEpoch,
         'runId': _runId,
         'start': _start,
         'markers': _markers,
@@ -398,7 +405,15 @@ class _VideoScreenState extends State<VideoScreen> {
         );
         if (!active()) return;
       }
-      if (_readyToCompare) await _seek(_playStartPosition);
+      if (_readyToCompare) {
+        final resume = (entry['resumePosition'] as num?)?.toDouble();
+        await _seek(
+          resume != null && resume.isFinite
+              ? resume.clamp(_playStartPosition, _endPosition)
+              : _playStartPosition,
+        );
+      }
+      unawaited(_persist());
     } catch (error) {
       if (active()) {
         _message(
@@ -880,16 +895,6 @@ class _VideoScreenState extends State<VideoScreen> {
     );
   }
 
-  String _label({bool compare = false}) {
-    final run = compare ? _comparisonRun : _run;
-    if (run != null) {
-      final names = widget.shooters.where((s) => s.id == run.shooterId);
-      return names.isEmpty ? 'Без стрелка' : names.first.name;
-    }
-    return (compare ? _comparisonEntry : _selected)?['name'] as String? ??
-        'Без видео';
-  }
-
   Future<void> _pauseAndSeek(double seconds) async {
     await _player?.pause();
     await _comparison?.pause();
@@ -950,7 +955,8 @@ class _VideoScreenState extends State<VideoScreen> {
                 : _selected!['path'],
             'start': _start,
             'times': _times(includeCandidates: true),
-            'primaryLabel': 'A · ${_label()}',
+            'primaryLabel': 'A',
+            'primaryMuted': _mutedA,
             'mode': compare
                 ? (_overlay && !sideBySide ? 'overlay' : 'sideBySide')
                 : 'single',
@@ -958,7 +964,8 @@ class _VideoScreenState extends State<VideoScreen> {
               'comparisonPath': Uri.parse(_comparison!.dataSource).toFilePath(),
               'comparisonStart': _comparisonStart,
               'comparisonTimes': _times(compare: true, includeCandidates: true),
-              'comparisonLabel': 'B · ${_label(compare: true)}',
+              'comparisonLabel': 'B',
+              'comparisonMuted': _mutedB,
               'comparisonCorrection':
                   _comparisonOffset - (_comparisonStart - _start),
               'opacity': _opacity,
@@ -1010,7 +1017,7 @@ class _VideoScreenState extends State<VideoScreen> {
         TextSpan(
           children: [
             TextSpan(
-              text: '${compare ? 'B' : 'A'} · ${_label(compare: compare)}\n',
+              text: '${compare ? 'B' : 'A'}\n',
               style: const TextStyle(fontSize: 12),
             ),
             TextSpan(text: shotTime, style: const TextStyle(fontSize: 26)),
@@ -1055,8 +1062,8 @@ class _VideoScreenState extends State<VideoScreen> {
           checked: !_mutedB,
           child: const Text('Звук B'),
         ),
-      const PopupMenuItem(value: -3, child: Text('Предыдущий кадр')),
-      const PopupMenuItem(value: -4, child: Text('Следующий кадр')),
+      const PopupMenuItem(value: -6, child: Text('Предыдущий выстрел')),
+      const PopupMenuItem(value: -7, child: Text('Следующий выстрел')),
       const PopupMenuItem(value: -5, child: Text('К сигналам таймеров')),
     ],
     onSelected: (value) async {
@@ -1072,10 +1079,8 @@ class _VideoScreenState extends State<VideoScreen> {
           }
         });
         await player.setVolume(muted ? 0 : 1);
-      } else if (value == -3 || value == -4) {
-        await _pauseAndSeek(
-          _position + (value == -3 ? -_frameStep : _frameStep),
-        );
+      } else if (value == -6 || value == -7) {
+        await _jumpShot(value == -7);
       } else if (value == -5) {
         if (_readyToCompare) await _fromStart();
       } else {
@@ -1217,8 +1222,7 @@ class _VideoScreenState extends State<VideoScreen> {
     );
   }
 
-  Widget _transport({bool fullscreen = false}) {
-    final player = _player!;
+  Future<void> _jumpShot(bool forward) async {
     final elapsed = _position - _start;
     final times = {
       ..._times(includeCandidates: true),
@@ -1230,13 +1234,19 @@ class _VideoScreenState extends State<VideoScreen> {
     }.toList()..sort();
     final previous = times.where((t) => t < elapsed - .005).toList();
     final next = times.where((t) => t > elapsed + .005).toList();
+    if (forward && next.isNotEmpty) await _pauseAndSeek(_start + next.first);
+    if (!forward && previous.isNotEmpty) {
+      await _pauseAndSeek(_start + previous.last);
+    }
+  }
+
+  Widget _transport({bool fullscreen = false}) {
+    final player = _player!;
     final controls = <Widget>[
       IconButton(
-        tooltip: 'Предыдущий выстрел',
-        onPressed: previous.isEmpty
-            ? null
-            : () => _pauseAndSeek(_start + previous.last),
-        icon: const Icon(Icons.skip_previous),
+        tooltip: 'Предыдущий кадр',
+        onPressed: () => _pauseAndSeek(_position - _frameStep),
+        icon: const Icon(Icons.keyboard_arrow_left),
       ),
       IconButton.filled(
         key: const ValueKey('paired-play'),
@@ -1245,11 +1255,9 @@ class _VideoScreenState extends State<VideoScreen> {
         icon: Icon(player.value.isPlaying ? Icons.pause : Icons.play_arrow),
       ),
       IconButton(
-        tooltip: 'Следующий выстрел',
-        onPressed: next.isEmpty
-            ? null
-            : () => _pauseAndSeek(_start + next.first),
-        icon: const Icon(Icons.skip_next),
+        tooltip: 'Следующий кадр',
+        onPressed: () => _pauseAndSeek(_position + _frameStep),
+        icon: const Icon(Icons.keyboard_arrow_right),
       ),
       _playerSettings(),
       if (fullscreen)
@@ -1319,25 +1327,13 @@ class _VideoScreenState extends State<VideoScreen> {
         ),
       );
     }
-    String time(List<double> values, int i, {bool split = false}) =>
-        i >= values.length
-        ? '—'
-        : (split ? videoSplit(values, i) : values[i]).toStringAsFixed(2);
+    String time(List<double> values, int i) =>
+        i >= values.length ? '—' : values[i].toStringAsFixed(2);
     final active = videoShotIndex(a, _position - _start);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          'Выстрелы и сплиты',
-          style: Theme.of(context).textTheme.titleLarge,
-        ),
-        const Text(
-          'Время и сплит в секундах. Δ = время B − A: «+» означает, что B позже. Нажмите строку, чтобы перейти к выстрелу.',
-        ),
-        if (b.isNotEmpty)
-          const Text(
-            'Сравнение по номеру выстрела. При разном порядке мишеней соответствие проверяет тренер.',
-          ),
+        Text('Выстрелы', style: Theme.of(context).textTheme.titleLarge),
         SizedBox(
           height: (64 + count * 56.0).clamp(120, 360),
           child: SingleChildScrollView(
@@ -1350,10 +1346,8 @@ class _VideoScreenState extends State<VideoScreen> {
                 columns: [
                   const DataColumn(label: Text('№')),
                   const DataColumn(label: Text('A · время')),
-                  const DataColumn(label: Text('A · сплит')),
                   if (b.isNotEmpty) ...[
                     const DataColumn(label: Text('B · время')),
-                    const DataColumn(label: Text('B · сплит')),
                     const DataColumn(label: Text('Δ, с')),
                   ],
                 ],
@@ -1372,10 +1366,8 @@ class _VideoScreenState extends State<VideoScreen> {
                     cells: [
                       DataCell(Text('${i + 1}')),
                       DataCell(Text(time(a, i))),
-                      DataCell(Text(time(a, i, split: true))),
                       if (b.isNotEmpty) ...[
                         DataCell(Text(time(b, i))),
-                        DataCell(Text(time(b, i, split: true))),
                         DataCell(
                           Text(
                             i < a.length && i < b.length
@@ -2063,7 +2055,23 @@ class _VideoScreenState extends State<VideoScreen> {
   }
 
   @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.hidden) {
+      final player = _player;
+      if (player != null && _selected != null) {
+        _selected!['resumePosition'] =
+            player.value.position.inMilliseconds / 1000;
+        unawaited(player.pause());
+        unawaited(_comparison?.pause() ?? Future<void>.value());
+        unawaited(_persist());
+      }
+    }
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     ++_openGeneration;
     ++_comparisonGeneration;
     _player?.removeListener(_tick);

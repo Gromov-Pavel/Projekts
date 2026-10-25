@@ -95,16 +95,18 @@ class _PhoneTimerScreenState extends State<PhoneTimerScreen>
 
   void _publishWatch({bool newRun = false}) {
     widget.watchBridge?.phoneState(
-      !_foreground || _watchFailed
+      _watchFailed
           ? WatchPhase.unavailable
           : _active
           ? (_running ? WatchPhase.running : WatchPhase.preparing)
           : _watchStarted
           ? WatchPhase.finished
-          : WatchPhase.idle,
+          : _foreground
+          ? WatchPhase.idle
+          : WatchPhase.unavailable,
       _watchStarted ? _shots : [],
       canControl:
-          _foreground &&
+          (_foreground || _active) &&
           _loaded &&
           !_testing &&
           !_saving &&
@@ -117,7 +119,7 @@ class _PhoneTimerScreenState extends State<PhoneTimerScreen>
 
   Future<void> _watchCommand(bool start, int? delayMs) async {
     if (!mounted ||
-        !_foreground ||
+        (start && !_foreground) ||
         !_loaded ||
         _saving ||
         _testing ||
@@ -435,7 +437,11 @@ class _PhoneTimerScreenState extends State<PhoneTimerScreen>
         state == AppLifecycleState.detached ||
         state == AppLifecycleState.hidden) {
       _foreground = false;
-      unawaited(_stop('Остановлено при сворачивании'));
+      if (_testing) {
+        unawaited(_stop('Проверка микрофона остановлена'));
+      } else {
+        _publishWatch();
+      }
     } else if (state == AppLifecycleState.resumed) {
       _foreground = true;
       _publishWatch();

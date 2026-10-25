@@ -111,6 +111,9 @@ void main() {
         await tester.pumpAndSettle();
         await tester.tap(find.text('Clip A').last);
         await settleIO(tester);
+        expect(platform.volumes, {0: 1.0, 1: 1.0});
+        expect(hud(false), isNot(contains('Clip A')));
+        expect(hud(true), isNot(contains('Clip B')));
         expect(hud(false), contains('№0/3'));
         expect(hud(true), contains('№0/2'));
         expect(hud(false), contains('—'));
@@ -177,6 +180,8 @@ void main() {
           findsNothing,
         );
         expect(aRect.top, closeTo(bRect.top, 1));
+        expect(find.byTooltip('Предыдущий кадр'), findsOneWidget);
+        expect(find.byTooltip('Следующий кадр'), findsOneWidget);
         expect(find.byType(ChoiceChip), findsNothing);
         await tester.tap(find.byTooltip('Настройки плеера'));
         await tester.pumpAndSettle();
@@ -208,7 +213,7 @@ void main() {
         await tester.pumpAndSettle();
         await tester.tap(find.byKey(const ValueKey('paired-play')));
         await tester.pump();
-        expect(platform.volumes, {0: 0.0, 1: 1.0});
+        expect(platform.volumes, {0: 0.0, 1: 0.0});
         expect(platform.speeds, {0: .5, 1: .5});
         await tester.tap(find.byKey(const ValueKey('paired-play')));
         await tester.pumpAndSettle();
@@ -235,7 +240,10 @@ void main() {
           closeTo(1.6, .0001),
         ]);
         expect(exported!['comparisonTimes'], [1.0, closeTo(1.2, .0001)]);
-        expect(exported!['primaryLabel'], isNot(contains('авто')));
+        expect(exported!['primaryLabel'], 'A');
+        expect(exported!['comparisonLabel'], 'B');
+        expect(exported!['primaryMuted'], isTrue);
+        expect(exported!['comparisonMuted'], isTrue);
         expect(exported!['comparisonLabel'], isNot(contains('проверить')));
         final saved = jsonDecode(metadata.readAsStringSync()) as List;
         expect(saved[0]['markers'], [3.0]);

@@ -249,7 +249,7 @@ void main() {
     },
   );
   testWidgets(
-    'approved watch starts and finishes phone timer; background commands are rejected',
+    'active timer survives background and watch can finish; background starts are rejected',
     (tester) async {
       final bridge = WatchBridge(TimerSession(onImport: (_, _) async => true));
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
@@ -280,6 +280,12 @@ void main() {
       await tester.pump();
       expect(calls, contains('micStart'));
       expect(calls, contains('beep'));
+      expect(bridge.phase, WatchPhase.running);
+      final stoppedBefore = calls.where((c) => c == 'micStop').length;
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+      bridge.foreground(false);
+      await tester.pump(const Duration(seconds: 2));
+      expect(calls.where((c) => c == 'micStop').length, stoppedBefore);
       expect(bridge.phase, WatchPhase.running);
       await tester.runAsync(
         () => bridge.handleCommand({'run': bridge.run, 'op': 2}),

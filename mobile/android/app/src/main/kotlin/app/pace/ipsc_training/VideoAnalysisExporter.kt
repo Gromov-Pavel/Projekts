@@ -39,7 +39,7 @@ class VideoAnalysisExporter(private val activity: Activity) {
     private var disposed = false
 
     private data class Info(val width: Int, val height: Int, val duration: Double, val frameRate: Double?)
-    private data class Run(val path: String, val start: Double, val times: List<Double>, val label: String)
+    private data class Run(val path: String, val start: Double, val times: List<Double>, val label: String, val muted: Boolean)
 
     fun handle(call: MethodCall, result: MethodChannel.Result): Boolean {
         when (call.method) {
@@ -71,9 +71,9 @@ class VideoAnalysisExporter(private val activity: Activity) {
         require(raw.size <= 10000) { "Too many shots" }
         val times = raw.map { require(it is Number) { "Invalid shot time" }; it.toDouble() }
         require(times.all { it.isFinite() && it >= 0 } && times.zipWithNext().all { it.second > it.first }) { "Shot times must increase" }
-        val label = call.argument<String>(if (comparison) "comparisonLabel" else "primaryLabel") ?: "PACE"
-        require(label.length <= 120) { "Video label is too long" }
-        return Run(path!!, start, times, label.replace('\n', ' '))
+        val label = if (comparison) "B" else "A"
+        val muted = call.argument<Boolean>(if (comparison) "comparisonMuted" else "primaryMuted") ?: false
+        return Run(path!!, start, times, label, muted)
     }
 
     private fun export(call: MethodCall, result: MethodChannel.Result) {
@@ -140,7 +140,7 @@ class VideoAnalysisExporter(private val activity: Activity) {
             if (mode != "overlay") videoEffects.add(OverlayEffect(listOf(ShotOverlay(run, if (paired) run.start - trimStarts[index] else run.start))))
             val effects = Effects(emptyList(), videoEffects)
             val item = EditedMediaItem.Builder(media.build()).setEffects(effects)
-                .setRemoveAudio(index > 0).build()
+                .setRemoveAudio(run.muted).build()
             EditedMediaItemSequence.Builder(item).build()
         }
         val compositionBuilder = Composition.Builder(sequences)

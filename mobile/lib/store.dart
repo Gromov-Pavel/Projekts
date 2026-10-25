@@ -12,18 +12,29 @@ class MatchArchive {
   final String id;
   final DateTime createdAt;
   final List<String> stageIds;
+  final List<String> excludedShooterIds;
   MatchArchive({
     required this.id,
     required this.createdAt,
     required List<String> stageIds,
-  }) : stageIds = List.unmodifiable(stageIds);
+    List<String> excludedShooterIds = const [],
+  }) : stageIds = List.unmodifiable(stageIds),
+       excludedShooterIds = List.unmodifiable(excludedShooterIds);
   Map<String, dynamic> toJson() => {
     'id': id,
     'createdAt': createdAt.toIso8601String(),
     'stageIds': stageIds,
+    'excludedShooterIds': excludedShooterIds,
   };
   factory MatchArchive.fromJson(Map<String, dynamic> j) {
     final ids = j['stageIds'];
+    final excluded = j['excludedShooterIds'] ?? <dynamic>[];
+    if (excluded is! List ||
+        excluded.length > 1000 ||
+        excluded.any((v) => v is! String || v.isEmpty) ||
+        excluded.toSet().length != excluded.length) {
+      throw const FormatException('Invalid archived participants');
+    }
     final date = j['createdAt'] is String
         ? DateTime.tryParse(j['createdAt'])
         : null;
@@ -40,18 +51,27 @@ class MatchArchive {
       id: j['id'],
       createdAt: date,
       stageIds: ids.cast<String>(),
+      excludedShooterIds: excluded.cast<String>(),
     );
   }
 }
 
 class AppData {
   final List<Shooter> shooters;
+  final Set<String> matchExcludedShooters;
+  List<Shooter> get matchShooters =>
+      shooters.where((s) => !matchExcludedShooters.contains(s.id)).toList();
   final List<Stage> stages;
   final List<Stage> archivedStages;
   final List<MatchArchive> archivedMatches;
   List<Stage> get allStages => [...archivedStages, ...stages];
-  List<Run> get matchRuns =>
-      runs.where((r) => stages.any((s) => s.id == r.stageId)).toList();
+  List<Run> get matchRuns => runs
+      .where(
+        (r) =>
+            !matchExcludedShooters.contains(r.shooterId) &&
+            stages.any((s) => s.id == r.stageId),
+      )
+      .toList();
 
   void selectFirstPasses() {
     final groups = <String, List<int>>{};
@@ -77,11 +97,13 @@ class AppData {
           id: 'match-${now.microsecondsSinceEpoch}',
           createdAt: now,
           stageIds: stages.map((s) => s.id).toList(),
+          excludedShooterIds: matchExcludedShooters.toList(),
         ),
       );
     }
     archivedStages.addAll(stages);
     stages.clear();
+    matchExcludedShooters.clear();
   }
 
   final List<Run> runs;
@@ -89,6 +111,7 @@ class AppData {
   final List<Map<String, dynamic>> revisions;
   AppData({
     List<Shooter> shooters = const [],
+    Set<String> matchExcludedShooters = const {},
     List<Stage> stages = const [],
     List<Stage> archivedStages = const [],
     List<MatchArchive> archivedMatches = const [],
@@ -96,6 +119,7 @@ class AppData {
     List<Run> calculations = const [],
     List<Map<String, dynamic>> revisions = const [],
   }) : shooters = List.of(shooters),
+       matchExcludedShooters = Set.of(matchExcludedShooters),
        stages = List.of(stages),
        archivedStages = List.of(archivedStages),
        archivedMatches = List.of(archivedMatches),
@@ -106,6 +130,7 @@ class AppData {
   Map<String, dynamic> toJson() => {
     'schemaVersion': 1,
     'shooters': shooters.map((s) => s.toJson()).toList(),
+    'matchExcludedShooters': matchExcludedShooters.toList(),
     'stages': stages.map((s) => s.toJson()).toList(),
     'archivedStages': archivedStages.map((s) => s.toJson()).toList(),
     'archivedMatches': archivedMatches.map((s) => s.toJson()).toList(),
@@ -135,8 +160,16 @@ class AppData {
       }).toList();
     }
 
+    final excluded = json['matchExcludedShooters'] ?? <dynamic>[];
+    if (excluded is! List ||
+        excluded.length > 1000 ||
+        excluded.any((v) => v is! String || v.isEmpty) ||
+        excluded.toSet().length != excluded.length) {
+      throw const FormatException('Invalid match participants');
+    }
     final data = AppData(
       shooters: records('shooters', 1000, Shooter.fromJson),
+      matchExcludedShooters: excluded.cast<String>().toSet(),
       stages: records('stages', 1000, Stage.fromJson),
       archivedStages: json.containsKey('archivedStages')
           ? records('archivedStages', 10000, Stage.fromJson)
@@ -160,6 +193,9 @@ class AppData {
     }
 
     final people = unique(data.shooters.map((s) => s.id));
+    if (!people.containsAll(data.matchExcludedShooters)) {
+      throw const FormatException('Missing excluded shooter');
+    }
     final stages = unique(data.allStages.map((s) => s.id));
     final stageById = {for (final stage in data.allStages) stage.id: stage};
     unique(data.runs.map((r) => r.id));

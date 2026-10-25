@@ -63,7 +63,7 @@ class PhoneTimerAudio(private val activity: Activity, messenger: BinaryMessenger
     )
 
     private fun playBeep(call: MethodCall): Map<String, Any> {
-        check(foreground) { "Audio stopped while app is in background" }
+        check(foreground || (microphone != null && PhoneTimerService.active)) { "Start the timer while the app is visible" }
         val duration = (call.argument<Number>("durationMs")?.toInt() ?: 600).coerceIn(150, 1500)
         val gain = call.argument<Number>("gain")?.toDouble() ?: 1.0
         require(gain.isFinite()) { "Invalid beep gain" }
@@ -127,9 +127,15 @@ class PhoneTimerAudio(private val activity: Activity, messenger: BinaryMessenger
         }
         val record = checkNotNull(recorder) { "Microphone PCM input unavailable" }
         try {
+            PhoneTimerService.onStopped = { stopMicrophone("service") }
+            PhoneTimerService.start(activity)
             record.startRecording()
             check(record.recordingState == AudioRecord.RECORDSTATE_RECORDING) { "Microphone failed to start" }
-        } catch (error: Exception) { record.release(); throw error }
+        } catch (error: Exception) {
+            PhoneTimerService.onStopped = null
+            PhoneTimerService.stop(activity)
+            record.release(); throw error
+        }
         val ready = System.nanoTime() / 1e9
         val capture = Capture(record)
         microphone = capture
@@ -184,6 +190,8 @@ class PhoneTimerAudio(private val activity: Activity, messenger: BinaryMessenger
             handler.post {
                 if (microphone === capture) {
                     microphone = null
+                    PhoneTimerService.onStopped = null
+                    PhoneTimerService.stop(activity)
                     if (sink === target) {
                         failure?.let { target.error("microphone", it.message, null) }
                         target.success(mapOf("event" to "stopped", "reason" to if (limit) "limit" else "error"))
@@ -216,6 +224,8 @@ class PhoneTimerAudio(private val activity: Activity, messenger: BinaryMessenger
     }
 
     private fun stopMicrophone(reason: String) {
+        PhoneTimerService.onStopped = null
+        PhoneTimerService.stop(activity)
         val capture = microphone ?: return
         microphone = null
         capture.running = false
@@ -226,12 +236,13 @@ class PhoneTimerAudio(private val activity: Activity, messenger: BinaryMessenger
 
     fun background() {
         foreground = false
-        stopMicrophone("background")
-        stopBeep()
+        if (microphone == null) stopBeep()
     }
 
     fun dispose() {
-        background()
+        foreground = false
+        stopMicrophone("disposed")
+        stopBeep()
         sink = null
         events.setStreamHandler(null)
         handler.removeCallbacksAndMessages(null)

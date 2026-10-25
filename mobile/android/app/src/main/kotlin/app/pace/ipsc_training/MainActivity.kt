@@ -47,6 +47,9 @@ class MainActivity : FlutterActivity() {
                 return@setMethodCallHandler
             }
             if (phoneAudio.handle(call, result)) return@setMethodCallHandler
+            if (call.method == "appVersion") {
+                result.success(packageManager.getPackageInfo(packageName, 0).versionName); return@setMethodCallHandler
+            }
             if (call.method == "androidSdk") { result.success(android.os.Build.VERSION.SDK_INT); return@setMethodCallHandler }
             if (call.method != "analyze") { result.notImplemented(); return@setMethodCallHandler }
             val path = call.argument<String>("path")

@@ -281,4 +281,39 @@ void main() {
       expect((await store.load()).shooters, isEmpty);
     },
   );
+  test(
+    'removing a match participant preserves history and archive membership',
+    () {
+      final data = AppData(
+        shooters: [
+          Shooter(id: 'a', name: 'A'),
+          Shooter(id: 'b', name: 'B'),
+        ],
+        stages: [Stage(id: 'st', name: 'S')],
+        runs: [
+          Run(id: 'ra', shooterId: 'a', stageId: 'st', times: [1]),
+          Run(id: 'rb', shooterId: 'b', stageId: 'st', times: [2]),
+        ],
+      );
+      data.matchExcludedShooters.add('a');
+      final restored = AppData.fromJson(data.toJson());
+      expect(restored.matchShooters.map((s) => s.id), ['b']);
+      expect(restored.matchRuns.map((r) => r.id), ['rb']);
+      expect(restored.runs.length, 2);
+      expect(restored.shooters.length, 2);
+      restored.newMatch();
+      expect(restored.archivedMatches.single.excludedShooterIds, ['a']);
+      expect(restored.matchShooters.length, 2);
+      expect(restored.runs.length, 2);
+      final legacy = data.toJson()..remove('matchExcludedShooters');
+      expect(AppData.fromJson(legacy).matchShooters.length, 2);
+      expect(
+        () => AppData.fromJson({
+          ...data.toJson(),
+          'matchExcludedShooters': ['missing'],
+        }),
+        throwsFormatException,
+      );
+    },
+  );
 }
