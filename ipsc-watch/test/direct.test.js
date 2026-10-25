@@ -52,11 +52,15 @@ test('SG events retain millisecond resolution and ACK cannot start a run',()=>{
 })
 
 function linkHarness() {
-  const callbacks={},writes=[],disconnects=[],timers=new Map();let id=0,now=100
+  const callbacks={},writes=[],disconnects=[],profiles=[],timers=new Map();let id=0,now=100
   const ble={mstOnPrepare:f=>callbacks.prepare=f,mstOnDescWriteComplete:f=>callbacks.desc=f,
     mstStartScan:f=>{callbacks.scan=f;return true},mstStopScan:()=>{},
     mstOnCharaNotification:f=>callbacks.notify=f,mstOnCharaWriteComplete:f=>callbacks.write=f,
-    mstConnect:(addr,f)=>{callbacks.connect=f;return true},mstBuildProfile:()=>true,
+    mstConnect:(addr,f)=>{
+      // Registration before a live connection is not part of the official sample flow.
+      delete callbacks.prepare;delete callbacks.desc;delete callbacks.notify;delete callbacks.write
+      callbacks.connect=f;return true
+    },mstBuildProfile:p=>{profiles.push(p);return true},
     mstWriteDescriptor:()=>true,mstWriteCharacteristic:(p,u,b)=>writes.push(Array.from(new Uint8Array(b))),
     mstDisconnect:id=>disconnects.push(id),mstDestroyProfileInstance:()=>{},mstOffAllCb:()=>{}}
   const context={ble,timerProfiles,TimerDecoder,controlPacket,uuid:s=>String(s).toLowerCase(),
@@ -66,8 +70,25 @@ function linkHarness() {
   vm.runInNewContext(source,context)
   const link=new context.DirectTimerLink(()=>{})
   const ready=()=>{link.connect();callbacks.scan({dev_addr:new Uint8Array([1,2,3,4,5,6]).buffer});callbacks.connect({connected:0,connect_id:7});callbacks.prepare({status:0,profile:5});callbacks.desc({profile:5,chara:timerProfiles[0].notify,status:0})}
-  return {link,ready,callbacks,writes,disconnects,timers,advance:n=>{now+=n},emit:bytes=>callbacks.notify({profile:5,uuid:timerProfiles[0].notify,data:new Uint8Array(bytes).buffer})}
+  return {link,ready,callbacks,writes,disconnects,profiles,timers,advance:n=>{now+=n},emit:bytes=>callbacks.notify({profile:5,uuid:timerProfiles[0].notify,data:new Uint8Array(bytes).buffer})}
 }
+test('Zepp profile is registered after connection and uses native short service UUID',()=>{
+  const h=linkHarness();h.link.connect();assert.equal(h.callbacks.prepare,undefined)
+  const scanTimeout=Array.from(h.timers.values())[0]
+  h.callbacks.scan({dev_addr:new Uint8Array([1,2,3,4,5,6]).buffer})
+  assert.equal(h.profiles.length,0);assert.equal(h.timers.size,1)
+  const connectTimeout=Array.from(h.timers.values())[0]
+  h.callbacks.connect({connected:0,connect_id:7})
+  assert.equal(h.profiles.length,1);assert.equal(h.profiles[0].id,7)
+  assert.equal(h.profiles[0].list[0].list[0].uuid,'FFF0')
+  assert.equal(h.profiles[0].list[0].list[0].list[0].uuid,timerProfiles[0].notify)
+  assert.equal(typeof h.callbacks.prepare,'function')
+  assert.equal(h.timers.size,1)
+  scanTimeout();connectTimeout();assert.equal(h.link.stage,'profile');assert.equal(h.link.active,true)
+  h.callbacks.prepare({status:0,profile:5})
+  h.callbacks.desc({profile:5,chara:timerProfiles[0].notify,status:0})
+  assert.equal(h.link.fresh(),true);assert.equal(h.timers.size,0)
+})
 test('direct mode connects only to saved address and reports actual failing stage',()=>{
   const h=linkHarness();h.link.connect()
   h.callbacks.scan({dev_addr:new Uint8Array([9,2,3,4,5,6]).buffer});assert.equal(h.callbacks.connect,undefined)
@@ -75,7 +96,7 @@ test('direct mode connects only to saved address and reports actual failing stag
   h.callbacks.connect({connected:0,connect_id:7});assert.equal(h.link.stage,'profile')
   h.callbacks.prepare({status:0,profile:5});assert.equal(h.link.stage,'subscribe')
   const timeout=Array.from(h.timers.values())[0];timeout()
-  assert.match(h.link.message,/нет подписки/);assert.doesNotMatch(h.link.message,/телефон/)
+  assert.match(h.link.message,/Нет ответа подписки/);assert.doesNotMatch(h.link.message,/телефон/)
   assert.equal(h.link.fresh(),false)
 })
 test('direct link waits for subscription and real events; queues stop; never retries Start',()=>{

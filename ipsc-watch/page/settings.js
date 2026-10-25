@@ -6,7 +6,7 @@ Page({
   build() {
     releaseScreen()
     label('Настройки', 90, 30, 300, 45, 30)
-    label('Версия 0.8.2', 90, 79, 300, 24, 18, 0x97a5b4)
+    label('Версия 0.8.3', 90, 79, 300, 24, 18, 0x97a5b4)
     button('Подключение таймера',55,112,370,54,()=>replace({url:'page/timer'}))
     this.delay = button('', 55, 180, 370, 54, () => replace({url:'page/delay'}))
     this.delayMode = label('', 55, 238, 370, 26, 18, 0x97a5b4)

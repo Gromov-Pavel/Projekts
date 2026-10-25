@@ -11,64 +11,69 @@ export class DirectTimerLink {
   }
   show(message) {this.message=message;this.update(this)}
   fresh() {return this.connection!==null&&this.profile!==null&&this.subscribed}
+  setStage(stage,message) {
+    clearTimeout(this.timeout);this.stage=stage;const epoch=this.epoch
+    this.show(message)
+    this.timeout=setTimeout(()=>{
+      if(epoch!==this.epoch||this.stage!==stage)return
+      const error=stage==='scan'?'Выбранный таймер не найден':stage==='connect'?'Таймер не ответил на подключение'
+        :stage==='profile'?'Нет ответа профиля':'Нет ответа подписки'
+      this.fail(error)
+    },20000)
+  }
   connect() {
     this.close()
     const saved=getDirectTimer(), definition=timerProfiles.find(p=>p.id===saved?.profile)
     if(!saved||!definition){this.show('Выберите таймер в настройках');return}
     this.definition=definition;this.decoder=new TimerDecoder(definition.id)
     this.state=null;this.active=true;const epoch=this.epoch
-    this.stage='scan';this.show('Поиск выбранного таймера…')
-    this.timeout=setTimeout(()=>{if(epoch===this.epoch){
-      const message=this.stage==='scan'?'Выбранный таймер не найден':this.stage==='connect'?'Таймер не ответил на подключение'
-        :this.stage==='profile'?'Таймер подключён · сбой профиля':'Таймер подключён · нет подписки'
-      this.close();this.show(message)
-    }},20000)
+    this.setStage('scan','Поиск выбранного таймера…')
     try {
-      ble.mstOnPrepare((p,s)=>{
-        if(epoch!==this.epoch)return
-        const value=params(p,{profile:p,status:s})
-        if(value.status!==0){this.fail('Ошибка профиля: '+value.status);return}
-        this.profile=value.profile;this.stage='subscribe';this.show('Включаем приём выстрелов…')
-        if(!ble.mstWriteDescriptor(this.profile,definition.notify,'2902',new Uint8Array([1,0]).buffer,2))this.fail('Не удалось включить приём')
-      })
-      ble.mstOnDescWriteComplete((p,u,d,s)=>{
-        if(epoch!==this.epoch)return
-        const value=params(p,{profile:p,chara:u,status:s})
-        if(value.profile!==this.profile||uuid(value.chara||value.uuid)!==definition.notify)return
-        if(value.status!==0){this.fail('Ошибка подписки: '+value.status);return}
-        if(this.subscribed)return
-        clearTimeout(this.timeout);this.timeout=null;this.subscribed=true
-        this.state={revision:1,run:0,phase:0,phone:false,control:true,failed:false,count:0,total:0,split:null}
-        this.tick=setInterval(()=>this.poll(),500);this.show('Напрямую · '+saved.name)
-      })
-      ble.mstOnCharaNotification((p,u,d)=>{
-        if(epoch!==this.epoch)return
-        const value=params(p,{profile:p,uuid:u,data:d})
-        if(value.profile===this.profile&&uuid(value.uuid)===definition.notify&&value.data instanceof ArrayBuffer)
-          this.receive(new Uint8Array(value.data))
-      })
-      ble.mstOnCharaWriteComplete((p,u,s)=>{
-        if(epoch!==this.epoch)return
-        const value=params(p,{profile:p,uuid:u,status:s})
-        if(value.profile===this.profile&&uuid(value.uuid)===definition.write&&value.status!==0){
-          this.pending=null;this.stopRequested=false;this.show('Команда отклонена таймером')
-        }
-      })
       // Connect from a fresh native scan result, as in the Zepp BLE sample.
       // Saved bytes select exactly one device; no nearest-device fallback.
       if(!ble.mstStartScan(result=>{
         if(epoch!==this.epoch||this.stage!=='scan'||!(result.dev_addr instanceof ArrayBuffer)||result.dev_addr.byteLength!==6)return
         const address=result.dev_addr
         if(!new Uint8Array(address).every((b,i)=>b===saved.address[i]))return
-        ble.mstStopScan();this.stage='connect';this.show('Соединение с таймером…')
+        ble.mstStopScan();this.setStage('connect','Соединение с таймером…')
         if(!ble.mstConnect(address,c=>{
         if(epoch!==this.epoch){if(c.connected===0)ble.mstDisconnect(c.connect_id);return}
         if(c.connected!==0){this.fail(c.connected===2?'Связь с таймером потеряна':'Ошибка подключения: '+c.connected);return}
-        this.connection=c.connect_id;this.stage='profile';this.show('Настраиваем протокол…')
+        this.connection=c.connect_id;this.setStage('profile','Настраиваем протокол…')
+        ble.mstOnPrepare((p,s)=>{
+          if(epoch!==this.epoch)return
+          const value=params(p,{profile:p,status:s})
+          if(value.status!==0){this.fail('Ошибка профиля: '+value.status);return}
+          this.profile=value.profile;this.setStage('subscribe','Включаем приём выстрелов…')
+          if(!ble.mstWriteDescriptor(this.profile,definition.notify,'2902',new Uint8Array([1,0]).buffer,2))this.fail('Не удалось включить приём')
+        })
+        ble.mstOnDescWriteComplete((p,u,d,s)=>{
+          if(epoch!==this.epoch)return
+          const value=params(p,{profile:p,chara:u,status:s})
+          if(value.profile!==this.profile||uuid(value.chara||value.uuid)!==definition.notify)return
+          if(value.status!==0){this.fail('Ошибка подписки: '+value.status);return}
+          if(this.subscribed)return
+          clearTimeout(this.timeout);this.timeout=null;this.subscribed=true;this.stage='ready'
+          this.state={revision:1,run:0,phase:0,phone:false,control:true,failed:false,count:0,total:0,split:null}
+          this.tick=setInterval(()=>this.poll(),500);this.show('Напрямую · '+saved.name)
+        })
+        ble.mstOnCharaNotification((p,u,d)=>{
+          if(epoch!==this.epoch)return
+          const value=params(p,{profile:p,uuid:u,data:d})
+          if(value.profile===this.profile&&uuid(value.uuid)===definition.notify&&value.data instanceof ArrayBuffer)
+            this.receive(new Uint8Array(value.data))
+        })
+        ble.mstOnCharaWriteComplete((p,u,s)=>{
+          if(epoch!==this.epoch)return
+          const value=params(p,{profile:p,uuid:u,status:s})
+          if(value.profile===this.profile&&uuid(value.uuid)===definition.write&&value.status!==0){
+            this.pending=null;this.stopRequested=false;this.show('Команда отклонена таймером')
+          }
+        })
         const chars=[{uuid:definition.notify,permission:32,desc:1,len:1,list:[{uuid:'2902',permission:32}]},
           {uuid:definition.write,permission:32,desc:0,len:0}]
         if(!ble.mstBuildProfile({pair:false,id:this.connection,profile:'ipsc-timer',dev:address,len:1,
-          list:[{uuid:true,size:1,len:1,list:[{uuid:definition.service,permission:0,serv:0,len1:2,len2:2,list:chars}]}]}))this.fail('Не удалось создать BLE-профиль')
+          list:[{uuid:true,size:1,len:1,list:[{uuid:definition.service.replace(/^0000([0-9a-f]{4})-0000-1000-8000-00805f9b34fb$/i,'$1').toUpperCase(),permission:0,serv:0,len1:2,len2:2,list:chars}]}]}))this.fail('Не удалось создать BLE-профиль')
         }))this.fail('Подключение BLE недоступно')
       }))this.fail('Поиск BLE недоступен')
     }catch(_){this.fail('Ошибка Bluetooth. Повторите')}

@@ -1,4 +1,4 @@
-# IPSC тренировОчка — часы 0.8.2
+# IPSC тренировОчка — часы 0.8.3
 
 Amazfit T-Rex 3 Pro 48 мм, Zepp OS API 3.0+, Android 0.9.0+23.
 
