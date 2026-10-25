@@ -79,3 +79,15 @@ test('a stop intent is retired if the phone has already started a different run'
   f.advance(2000);link.poll();await flush()
   assert.equal(f.calls.filter(x=>x.method==='IPSC_COMMAND').length,count)
 })
+
+test('supported external timer start and stop wait for hardware state, not transport acceptance',async()=>{
+  const f=fixture(),{link}=f
+  f.respond(req=>req.method==='IPSC_COMMAND'?{accepted:true}:frame({flags:32}))
+  link.connect();await flush();link.command(true);await flush()
+  assert.ok(link.pending);assert.equal(link.state.phase,0)
+  const running=frame({run:8,revision:10,phase:2,flags:32})
+  f.respond(req=>req.method==='IPSC_COMMAND'?{accepted:true}:running)
+  link.receive(running);await flush();assert.equal(link.pending,null)
+  link.command(false);await flush();assert.ok(link.pending)
+  link.receive(frame({run:8,revision:11,phase:3,flags:32}));assert.equal(link.pending,null)
+})

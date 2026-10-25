@@ -7,6 +7,33 @@ void main() {
   // Literal example from the implementer's protocol document, not a user capture.
   const shot = [0xf8, 0xf9, 0x36, 0, 4, 0x24, 2, 0x0c, 0xf9, 0xf8];
 
+  test('Special Pie remote control uses five bytes, without notification session id', () {
+    expect(TimerProtocols.controlPacket(TimerProtocols.legacyId, true), [
+      248,
+      249,
+      52,
+      249,
+      248,
+    ]);
+    expect(TimerProtocols.controlPacket(TimerProtocols.legacyId, false), [
+      248,
+      249,
+      24,
+      249,
+      248,
+    ]);
+    for (final profile in [
+      TimerProtocols.rawId,
+      TimerProtocols.autoId,
+      'unknown',
+    ]) {
+      expect(
+        () => TimerProtocols.controlPacket(profile, true),
+        throwsUnsupportedError,
+      );
+    }
+  });
+
   test('zero and repeated times cannot create an invalid run', () {
     final d = TimerProtocols.decoder(TimerProtocols.legacyId);
     d.add(start);

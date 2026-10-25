@@ -23,8 +23,8 @@ Page(BasePage({
       if (!this.link.fresh()) { if (!this.link.active) this.link.connect(); else this.link.poll(); return }
       const state = this.link.state
       if (this.link.pending) { if (this.link.pending.start) this.link.command(false); return }
-      if (!state.phone) { this.externalNotice = true; this.render(); return }
-      if (state.phone && state.control && state.phase !== 4) this.link.command(![1, 2].includes(state.phase))
+      if (!state.phone && !state.control) { this.externalNotice = true; this.render(); return }
+      if (state.control && state.phase !== 4) this.link.command(![1, 2].includes(state.phase))
     })
     this.render()
     this.link.connect()
@@ -40,16 +40,16 @@ Page(BasePage({
       else if (!state.phone) status = state.phase === 3 ? 'Серия завершена'
         : [1, 2].includes(state.phase) ? 'Серия идёт · внешний таймер' : 'Внешний таймер · готов'
     }
-    if (fresh && state.revision !== 0 && !state.phone && this.externalNotice && [0, 3].includes(state.phase)) status = 'Special Pie: старт на самом таймере'
+    if (fresh && state.revision !== 0 && !state.phone && !state.control && this.externalNotice && [0, 3].includes(state.phase)) status = 'Special Pie: старт на самом таймере'
     if (fresh && [1, 2].includes(state.phase)) this.externalNotice = false
     update(this.status, status)
     const stopping = this.link.stopRequested || (this.link.pending && !this.link.pending.start)
     const running = fresh && state.revision !== 0 && [1, 2].includes(state.phase)
-    const ready = fresh && state.revision !== 0 && state.phone && state.control && state.phase !== 4
+    const ready = fresh && state.revision !== 0 && state.control && state.phase !== 4
     update(this.action, !fresh ? (this.link.active ? 'Подключаем…' : 'Подключить')
       : state.revision === 0 ? 'Сверьте код' : stopping ? 'Останавливаем…'
       : this.link.pending ? 'Запускаем…' : state.phase === 4 ? 'См. телефон'
-      : !state.phone ? (running ? 'Серия идёт' : 'СТАРТ') : !state.control ? 'См. телефон'
+      : !state.phone && !state.control ? (running ? 'Серия идёт' : 'СТАРТ') : !state.control ? 'См. телефон'
       : running ? 'Стоп' : 'СТАРТ')
     actionColor(this.action, Boolean(running || stopping), Boolean(ready))
     const awake = getMode() === 'training' || (this.link.active && (!state || state.revision === 0 || this.link.pending)) || (fresh && [1, 2].includes(state?.phase))

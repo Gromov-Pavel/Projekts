@@ -1,9 +1,28 @@
 import 'dart:async';
 import 'dart:typed_data';
 
+import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:ipsc_training/timer_session.dart';
 import 'package:ipsc_training/watch_bridge.dart';
+
+class _RemoteSession extends TimerSession {
+  _RemoteSession() : super(onImport: (_, _) async => true) {
+    final device = BluetoothDevice.fromId('00:11:22:33:44:99');
+    selectedId = device.remoteId.str;
+    links[selectedId!] = TimerLink(device);
+  }
+  bool capable = true;
+  Completer<void>? hold;
+  final commands = <bool>[];
+  @override
+  bool canRemoteControl(TimerLink? link) => capable && link == selected;
+  @override
+  Future<void> remoteCommand(TimerLink link, bool start) async {
+    commands.add(start);
+    if (start && hold != null) await hold!.future;
+  }
+}
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -119,6 +138,50 @@ void main() {
     bridge.foreground(false);
     await bridge.handleCommand({'run': bridge.run, 'op': 1});
     expect(starts, [true]);
+  });
+
+  test(
+    'source change during phone screen launch cancels the old start',
+    () async {
+      final bridge = WatchBridge(TimerSession(onImport: (_, _) async => true));
+      addTearDown(bridge.dispose);
+      final starts = <bool>[];
+      bridge.attachPhoneLauncher(() async {
+        bridge.attachPhone((start, delay) async {
+          starts.add(start);
+        });
+        bridge.phoneState(WatchPhase.idle, [], canControl: true);
+        bridge.selectPhone(false);
+      });
+      bridge.enabled = bridge.approved = true;
+      await bridge.handleCommand({'run': bridge.run, 'op': 1});
+      expect(starts, isEmpty);
+    },
+  );
+
+  test('supported external dispatches only to selected device and retains a stop during write', () async {
+    final session = _RemoteSession();
+    final bridge = WatchBridge(session);
+    addTearDown(bridge.dispose);
+    bridge.selectPhone(false);
+    bridge.phase = WatchPhase.idle;
+    bridge.enabled = bridge.approved = true;
+    session.hold = Completer<void>();
+    final start = bridge.handleCommand({'run': bridge.run, 'op': 1});
+    bridge.phase = WatchPhase.running;
+    await bridge.handleCommand({'run': bridge.run, 'op': 2});
+    expect(session.commands, [true]);
+    session.hold!.complete();
+    await start;
+    await Future<void>.delayed(Duration.zero);
+    expect(session.commands, [true, false]);
+    bridge.phase = WatchPhase.finished;
+    await bridge.handleCommand({'run': bridge.run, 'op': 2});
+    expect(session.commands, [true, false]);
+    bridge.phase = WatchPhase.idle;
+    session.capable = false;
+    await bridge.handleCommand({'run': bridge.run, 'op': 1});
+    expect(session.commands, [true, false]);
   });
 
   test('wire vector matches watch; first shot has no fabricated split', () {

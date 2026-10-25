@@ -29,7 +29,7 @@ export function acceptState(previous, next) {
 }
 
 export function commandPacket(state, start, id) {
-  if (!state || !state.phone || !state.control || id < 1 || id > 65535 ||
+  if (!state || !state.control || id < 1 || id > 65535 ||
     (start ? [1, 2, 4].includes(state.phase) : ![1, 2].includes(state.phase))) return null
   const data = new ArrayBuffer(12), b = new DataView(data)
   b.setUint8(0, 1); b.setUint8(1, start ? 1 : 2)

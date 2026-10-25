@@ -541,6 +541,49 @@ class TimerSession extends ChangeNotifier {
       )
       .firstOrNull;
 
+  BluetoothCharacteristic? _controlCharacteristic(TimerLink link) => link
+      .services
+      .expand((s) => s.characteristics)
+      .where(
+        (c) =>
+            c.serviceUuid == Guid('fff0') &&
+            c.uuid == Guid('fff2') &&
+            (c.properties.write || c.properties.writeWithoutResponse),
+      )
+      .firstOrNull;
+
+  bool canRemoteControl(TimerLink? link) =>
+      link != null &&
+      link.device.isConnected &&
+      link.notifications != null &&
+      _controlCharacteristic(link) != null &&
+      (link.profile == TimerProtocols.legacyId ||
+          (link.profile == TimerProtocols.autoId &&
+              preferences.timers[link.device.remoteId.str]?.profile ==
+                  TimerProtocols.legacyId));
+
+  Future<void> remoteCommand(TimerLink link, bool start) async {
+    if (!canRemoteControl(link) || selected != link) {
+      throw StateError('Выбранный таймер не готов к управлению');
+    }
+    final characteristic = _controlCharacteristic(link)!;
+    final packet = TimerProtocols.controlPacket(TimerProtocols.legacyId, start);
+    await characteristic.write(
+      packet,
+      withoutResponse: !characteristic.properties.write,
+      timeout: 5,
+    );
+    _record({
+      'device': link.device.remoteId.str,
+      'command': start ? 'start' : 'stop',
+      'hex': packet.map((b) => b.toRadixString(16).padLeft(2, '0')).join(' '),
+    });
+    link.status = start
+        ? 'Старт отправлен. Ожидаем начало серии от таймера.'
+        : 'Остановка отправлена. Ожидаем завершение от таймера.';
+    if (mounted) notifyListeners();
+  }
+
   void finishSeries(TimerLink link, {bool partial = false}) {
     final series = link.active;
     link.active = null;

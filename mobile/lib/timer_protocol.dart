@@ -42,6 +42,14 @@ class TimerProtocols {
     ),
   ];
 
+  // Interoperability: Special Pie control frames use no session byte.
+  static List<int> controlPacket(String profile, bool start) {
+    if (profile != legacyId) {
+      throw UnsupportedError('Нет команды управления этим протоколом');
+    }
+    return [0xf8, 0xf9, start ? 0x34 : 0x18, 0xf9, 0xf8];
+  }
+
   static TimerDecoder decoder(String id) => profiles
       .firstWhere(
         (profile) => profile.id == id,

@@ -56,6 +56,7 @@ class WatchBridge extends ChangeNotifier {
   bool enabled = false, busy = false, phone = false, approved = false;
   bool _disposed = false, _failed = false;
   bool _commandBusy = false;
+  Map<String, dynamic>? _queuedExternalStop;
   String status = 'Часы отключены';
   String? peer;
   int? peerCode;
@@ -88,11 +89,11 @@ class WatchBridge extends ChangeNotifier {
   StreamSubscription<dynamic>? _events;
   Uint8List? _lastPublished;
   Future<void> _writes = Future.value();
-  bool get controllable =>
-      phone &&
-      _foreground &&
-      ((_phoneCommand != null && _phoneCanControl) ||
-          (_phoneCommand == null && _phoneLauncher != null));
+  bool get controllable => phone
+      ? _foreground &&
+            ((_phoneCommand != null && _phoneCanControl) ||
+                (_phoneCommand == null && _phoneLauncher != null))
+      : session.canRemoteControl(session.selected);
 
   void _notify() {
     if (!_disposed) notifyListeners();
@@ -341,15 +342,21 @@ class WatchBridge extends ChangeNotifier {
 
   @visibleForTesting
   Future<void> handleCommand(Map<dynamic, dynamic> raw) async {
-    if (!enabled || !approved || _disposed || _commandBusy) return;
+    if (!enabled || !approved || _disposed) return;
+    if (_commandBusy) {
+      if (!phone &&
+          raw['op'] == 2 &&
+          raw['run'] == run &&
+          phase == WatchPhase.running) {
+        _queuedExternalStop = Map<String, dynamic>.from(raw);
+      }
+      return;
+    }
     if (raw['run'] != run) {
       _publish(force: true);
       return;
     }
-    if (phone &&
-        raw['run'] == run &&
-        raw['op'] == 2 &&
-        phase == WatchPhase.finished) {
+    if (raw['run'] == run && raw['op'] == 2 && phase == WatchPhase.finished) {
       _publish(force: true);
       return;
     }
@@ -375,6 +382,12 @@ class WatchBridge extends ChangeNotifier {
     try {
       _commandBusy = true;
       _failed = false;
+      if (!phone) {
+        final link = session.selected;
+        if (link == null) throw StateError('Внешний таймер отключён');
+        await session.remoteCommand(link, raw['op'] == 1);
+        return;
+      }
       if (raw['op'] == 1 && _phoneCommand == null && _phoneLauncher != null) {
         await _phoneLauncher!();
         for (
@@ -386,6 +399,9 @@ class WatchBridge extends ChangeNotifier {
         ) {
           await Future<void>.delayed(const Duration(milliseconds: 50));
         }
+      }
+      if (!phone || run != raw['run']) {
+        throw StateError('Источник изменился; повторите команду');
       }
       if (!_foreground || _phoneCommand == null || !_phoneCanControl) {
         throw StateError('Откройте готовый телефонный таймер');
@@ -399,6 +415,9 @@ class WatchBridge extends ChangeNotifier {
       status = 'Команда часов: $e';
     } finally {
       _commandBusy = false;
+      final queued = _queuedExternalStop;
+      _queuedExternalStop = null;
+      if (queued != null) unawaited(handleCommand(queued));
     }
     _publish(force: true);
     _notify();

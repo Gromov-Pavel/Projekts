@@ -36,7 +36,7 @@ export class PhoneLink {
         this.pending = null
         if (this.stopRequested) {
           this.stopRequested = false
-          if (!next.failed && next.phone && next.control && [1, 2].includes(next.phase)) { this.command(false); return }
+          if (!next.failed && next.control && [1, 2].includes(next.phase)) { this.command(false); return }
         }
       }
     }
