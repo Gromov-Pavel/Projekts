@@ -20,6 +20,9 @@ async function forward(req, res) {
     if (command && (!Array.isArray(req.params?.packet) || req.params.packet.length !== 12 || !/^[0-9a-f]{32}$/.test(req.params.session || ''))) {
       res(null, {error:'Неверная команда'}); return
     }
+    if (command && req.params.delayMs !== undefined && (!Number.isInteger(req.params.delayMs) || req.params.delayMs < 0 || req.params.delayMs > 60000)) {
+      res(null, {error:'Задержка должна быть от 0 до 60 с'}); return
+    }
     const pair = credentials()
     const options = {
       url:'http://127.0.0.1:19373/v1/' + (command ? 'command' : 'state'),
@@ -29,7 +32,7 @@ async function forward(req, res) {
     if (pair.trust) options.headers['X-IPSC-Trust'] = pair.trust
     if (command) {
       options.headers['X-IPSC-Session'] = req.params.session
-      options.body = JSON.stringify({packet:req.params.packet})
+      options.body = JSON.stringify({packet:req.params.packet, ...(req.params.delayMs === undefined ? {} : {delayMs:req.params.delayMs})})
     }
     const response = await fetch(options)
     const body = typeof response.body === 'string' ? JSON.parse(response.body) : response.body

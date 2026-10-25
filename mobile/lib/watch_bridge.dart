@@ -64,7 +64,7 @@ class WatchBridge extends ChangeNotifier {
   WatchPhase phase = WatchPhase.unavailable;
   List<double> times = [];
   bool _phoneCanControl = false;
-  Future<void> Function(bool start)? _phoneCommand;
+  Future<void> Function(bool start, int? delayMs)? _phoneCommand;
   StreamSubscription<dynamic>? _events;
   Uint8List? _lastPublished;
   Future<void> _writes = Future.value();
@@ -195,7 +195,7 @@ class WatchBridge extends ChangeNotifier {
     _notify();
   }
 
-  void attachPhone(Future<void> Function(bool) command) {
+  void attachPhone(Future<void> Function(bool, int?) command) {
     _phoneCommand = command;
   }
 
@@ -295,6 +295,13 @@ class WatchBridge extends ChangeNotifier {
       _publish(force: true);
       return;
     }
+    final delayMs = raw['delayMs'];
+    if (delayMs != null &&
+        (delayMs is! int || delayMs < 0 || delayMs > 60000)) {
+      _failed = true;
+      _publish(force: true);
+      return;
+    }
     if (!controllable ||
         raw['op'] is! int ||
         ![1, 2].contains(raw['op']) ||
@@ -310,7 +317,10 @@ class WatchBridge extends ChangeNotifier {
     try {
       _commandBusy = true;
       _failed = false;
-      await _phoneCommand!(raw['op'] == 1);
+      await _phoneCommand!(
+        raw['op'] == 1,
+        raw['op'] == 1 ? delayMs as int? : null,
+      );
     } catch (e) {
       _failed = true;
       status = 'Команда часов: $e';

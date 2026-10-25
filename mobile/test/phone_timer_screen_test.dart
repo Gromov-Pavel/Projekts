@@ -257,9 +257,16 @@ void main() {
       );
       await ready(tester);
       bridge.enabled = bridge.approved = true;
-      await tester.runAsync(
-        () => bridge.handleCommand({'run': bridge.run, 'op': 1}),
-      );
+      await tester.runAsync(() async {
+        await bridge.handleCommand({
+          'run': bridge.run,
+          'op': 1,
+          'delayMs': 150,
+        });
+        await Future<void>.delayed(const Duration(milliseconds: 30));
+        expect(calls, isNot(contains('beep')));
+        await Future<void>.delayed(const Duration(milliseconds: 180));
+      });
       await tester.pump(const Duration(milliseconds: 1));
       await ready(tester);
       await tester.pump();

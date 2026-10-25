@@ -19,3 +19,9 @@ export function actionColor(widget, stop, ready) {
   widget.setProperty(ui.prop.MORE, {normal_color: stop ? 0xc62828 : ready ? 0x16733b : 0x202b36,
     press_color: stop ? 0x921e1e : ready ? 0x10582d : 0x36485a})
 }
+
+export function settingsIcon(click) {
+  const icon = label('⚙', 184, 12, 112, 90, 76)
+  icon.addEventListener(ui.event.CLICK_UP, click)
+  return icon
+}

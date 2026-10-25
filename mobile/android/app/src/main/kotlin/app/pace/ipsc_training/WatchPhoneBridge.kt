@@ -119,7 +119,7 @@ class WatchPhoneBridge(context: Context, messenger: BinaryMessenger) {
         }
     }
     private fun error(status: Int, message: String) = Reply(status, JSONObject().put("error", message))
-    private fun handle(method: String, path: String, client: String, authSession: String, trust: String, bytes: ByteArray?): Reply {
+    private fun handle(method: String, path: String, client: String, authSession: String, trust: String, delayMs: Int?, bytes: ByteArray?): Reply {
         expirePeer()
         if (!client.matches(Regex("[0-9a-f]{32}"))) return error(400, "Неверный запрос Zepp")
         if (method == "GET" && path == "/v1/state") {
@@ -142,6 +142,7 @@ class WatchPhoneBridge(context: Context, messenger: BinaryMessenger) {
         }
         if (method == "POST" && path == "/v1/command") {
             if (!approved || peer != client || authSession != session || !trusted(client, trust)) return error(403, "Подтвердите код на телефоне")
+            if (delayMs != null && delayMs !in 0..60000) return error(400, "Неверная задержка")
             if (bytes == null || bytes.size != 12 || bytes[0].toInt() != 1 || bytes[1].toInt() !in 1..2)
                 return error(400, "Неверная команда")
             val data = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN)
@@ -149,7 +150,7 @@ class WatchPhoneBridge(context: Context, messenger: BinaryMessenger) {
             if (id <= lastCommand || sink == null) return error(409, "Устаревшая команда")
             lastSeen = SystemClock.elapsedRealtime(); lastCommand = id
             sink?.success(mapOf("event" to "command", "op" to bytes[1].toInt(),
-                "run" to (data.getInt(4).toLong() and 0xffffffffL)))
+                "run" to (data.getInt(4).toLong() and 0xffffffffL), "delayMs" to delayMs))
             return Reply(202, JSONObject().put("accepted", true))
         }
         return error(404, "Неизвестный запрос")
@@ -188,8 +189,12 @@ class WatchPhoneBridge(context: Context, messenger: BinaryMessenger) {
             while (offset < length) {
                 val n = input.read(body, offset, length - offset); require(n > 0); offset += n
             }
-            val packet = if (length > 0) {
-                val list = JSONObject(body.toString(Charsets.UTF_8)).getJSONArray("packet")
+            val json = if (length > 0) JSONObject(body.toString(Charsets.UTF_8)) else null
+            val delayMs = if (json?.has("delayMs") == true) {
+                val value = json.get("delayMs"); require(value is Int && value in 0..60000); value
+            } else null
+            val packet = if (json != null) {
+                val list = json.getJSONArray("packet")
                 require(list.length() == 12)
                 ByteArray(12) { i ->
                     val value = list.get(i); require(value is Int && value in 0..255); value.toByte()
@@ -201,7 +206,7 @@ class WatchPhoneBridge(context: Context, messenger: BinaryMessenger) {
             main.post {
                 try {
                     response.set(if (!canceled.get() && cycle == epoch && server != null)
-                        handle(request[0], request[1], headers["x-ipsc-client"] ?: "", headers["x-ipsc-session"] ?: "", headers["x-ipsc-trust"] ?: "", packet)
+                        handle(request[0], request[1], headers["x-ipsc-client"] ?: "", headers["x-ipsc-session"] ?: "", headers["x-ipsc-trust"] ?: "", delayMs, packet)
                         else error(503, "Включите связь с часами"))
                 } catch (_: Exception) { response.set(error(400, "Неверный запрос")) }
                 finally { done.countDown() }

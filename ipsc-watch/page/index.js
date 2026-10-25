@@ -3,7 +3,7 @@ import { replace } from '@zos/router'
 import { PhoneLink } from '../lib/phone'
 import { applyScreenPolicy, releaseScreen } from '../lib/screen'
 import { getMode } from '../lib/settings'
-import { label, button, update, actionButton, actionColor } from '../lib/ui'
+import { label, update, actionButton, actionColor, settingsIcon } from '../lib/ui'
 
 Page(BasePage({
   onInit() {
@@ -11,8 +11,8 @@ Page(BasePage({
     this.link = new PhoneLink(() => { if (this.status) this.render() }, data => this.request(data, {timeout:4000}))
   },
   build() {
-    button('⚙', 204, 25, 72, 62, () => replace({url:'page/settings'}))
-    this.status = label('Нет подключения', 50, 94, 380, 48, 19, 0xffbb66)
+    settingsIcon(() => replace({url:'page/settings'}))
+    this.status = label('Нет подключения', 40, 104, 400, 38, 18, 0xffbb66)
     this.total = label('0.00', 35, 142, 410, 92, 82)
     label('ВРЕМЯ, С', 130, 231, 220, 24, 18, 0x97a5b4)
     label('СПЛИТ, С', 55, 266, 180, 24, 18, 0x97a5b4)
@@ -23,6 +23,7 @@ Page(BasePage({
       if (!this.link.fresh()) { if (!this.link.active) this.link.connect(); else this.link.poll(); return }
       const state = this.link.state
       if (this.link.pending) { if (this.link.pending.start) this.link.command(false); return }
+      if (!state.phone) { this.externalNotice = true; this.render(); return }
       if (state.phone && state.control && state.phase !== 4) this.link.command(![1, 2].includes(state.phase))
     })
     this.render()
@@ -39,6 +40,8 @@ Page(BasePage({
       else if (!state.phone) status = state.phase === 3 ? 'Серия завершена'
         : [1, 2].includes(state.phase) ? 'Серия идёт · внешний таймер' : 'Внешний таймер · готов'
     }
+    if (fresh && state.revision !== 0 && !state.phone && this.externalNotice && [0, 3].includes(state.phase)) status = 'Special Pie: старт на самом таймере'
+    if (fresh && [1, 2].includes(state.phase)) this.externalNotice = false
     update(this.status, status)
     const stopping = this.link.stopRequested || (this.link.pending && !this.link.pending.start)
     const running = fresh && state.revision !== 0 && [1, 2].includes(state.phase)

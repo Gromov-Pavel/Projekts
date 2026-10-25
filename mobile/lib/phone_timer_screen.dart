@@ -115,7 +115,7 @@ class _PhoneTimerScreenState extends State<PhoneTimerScreen>
     );
   }
 
-  Future<void> _watchCommand(bool start) async {
+  Future<void> _watchCommand(bool start, int? delayMs) async {
     if (!mounted ||
         !_foreground ||
         !_loaded ||
@@ -128,7 +128,7 @@ class _PhoneTimerScreenState extends State<PhoneTimerScreen>
       if (_active || (_shots.isNotEmpty && !_saved)) {
         throw StateError('Сначала сохраните предыдущую серию на телефоне');
       }
-      unawaited(_start());
+      unawaited(_start(delayMs: delayMs));
     } else {
       if (!_active) throw StateError('Таймер уже остановлен');
       final hadShots = _running;
@@ -247,9 +247,11 @@ class _PhoneTimerScreenState extends State<PhoneTimerScreen>
         false;
   }
 
-  Future<void> _start({bool test = false}) async {
+  Future<void> _start({bool test = false, int? delayMs}) async {
     if (_active || _previewing || _saving || !_loaded) return;
-    final d = double.tryParse(_delay.text.replaceAll(',', '.'));
+    final d = delayMs == null
+        ? double.tryParse(_delay.text.replaceAll(',', '.'))
+        : delayMs / 1000;
     final p = double.tryParse(_par.text.replaceAll(',', '.'));
     if (!test &&
         (d == null ||
@@ -365,8 +367,9 @@ class _PhoneTimerScreenState extends State<PhoneTimerScreen>
   Future<void> _stop(String message) async {
     if (message.startsWith('Ошибка') ||
         message.startsWith('Неверные') ||
-        message.startsWith('Микрофон остановлен'))
+        message.startsWith('Микрофон остановлен')) {
       _watchFailed = true;
+    }
     ++_token;
     _running = false;
     _detector.stop();

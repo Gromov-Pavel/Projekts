@@ -31,7 +31,7 @@ void main() {
       expect(bridge.peer, null);
       expect(bridge.peerCode, null);
       final commands = <bool>[];
-      bridge.attachPhone((start) async {
+      bridge.attachPhone((start, delayMs) async {
         commands.add(start);
       });
       await bridge.handleCommand({'run': bridge.run, 'op': 1});
@@ -70,6 +70,32 @@ void main() {
     },
   );
 
+  test(
+    'watch delay reaches phone once and invalid delays never start',
+    () async {
+      final bridge = WatchBridge(TimerSession(onImport: (_, _) async => true));
+      addTearDown(bridge.dispose);
+      bridge.selectPhone(true);
+      bridge.enabled = bridge.approved = true;
+      bridge.phoneState(WatchPhase.idle, [], canControl: true);
+      final delays = <int?>[];
+      bridge.attachPhone((start, delayMs) async {
+        if (start) delays.add(delayMs);
+      });
+      for (final invalid in [-1, 60001, 0.5, '3000']) {
+        await bridge.handleCommand({
+          'run': bridge.run,
+          'op': 1,
+          'delayMs': invalid,
+        });
+      }
+      expect(delays, isEmpty);
+      await bridge.handleCommand({'run': bridge.run, 'op': 1, 'delayMs': 0});
+      await bridge.handleCommand({'run': bridge.run, 'op': 1, 'delayMs': 5000});
+      expect(delays, [0, 5000]);
+    },
+  );
+
   test('wire vector matches watch; first shot has no fabricated split', () {
     final bytes = watchPacket(
       run: 7,
@@ -101,7 +127,7 @@ void main() {
       final bridge = WatchBridge(session);
       addTearDown(bridge.dispose);
       final calls = <bool>[];
-      bridge.attachPhone((value) async {
+      bridge.attachPhone((value, delayMs) async {
         calls.add(value);
       });
       bridge.selectPhone(true);
@@ -127,7 +153,7 @@ void main() {
       bridge.phoneState(WatchPhase.idle, [], canControl: true);
       bridge.enabled = bridge.approved = true;
       final calls = <bool>[];
-      bridge.attachPhone((start) async {
+      bridge.attachPhone((start, delayMs) async {
         calls.add(start);
         bridge.phoneState(
           start ? WatchPhase.preparing : WatchPhase.finished,
@@ -145,7 +171,7 @@ void main() {
       await bridge.handleCommand({'run': bridge.run, 'op': 2});
       expect(calls, [true, false]);
       final done = Completer<void>();
-      bridge.attachPhone((_) => done.future);
+      bridge.attachPhone((_, _) => done.future);
       final pending = bridge.handleCommand({'run': bridge.run, 'op': 1});
       await bridge.handleCommand({'run': bridge.run, 'op': 1});
       done.complete();
@@ -171,7 +197,7 @@ void main() {
       addTearDown(bridge.dispose);
       var commands = 0;
       bridge.selectPhone(true);
-      bridge.attachPhone((_) async {
+      bridge.attachPhone((_, _) async {
         commands++;
       });
       bridge.enabled = bridge.approved = true;

@@ -1,3 +1,4 @@
+import { getDelay } from './settings'
 import { decodeState, acceptState, commandPacket } from './wire'
 
 export class PhoneLink {
@@ -63,7 +64,7 @@ export class PhoneLink {
       if (!start && this.pending.start) { this.stopRequested = true; this.show('Завершаем…') }
       return
     }
-    const pending = {start, run:this.state.run, at:Date.now(), lastAttempt:0, attempts:0, session:this.session}
+    const pending = {start, delayMs:start ? getDelay() * 1000 : undefined, run:this.state.run, at:Date.now(), lastAttempt:0, attempts:0, session:this.session}
     this.pending = pending; this.send(pending)
   }
   send(pending) {
@@ -73,7 +74,7 @@ export class PhoneLink {
     pending.lastAttempt = Date.now(); pending.attempts++
     const epoch = this.epoch, session = this.session
     this.show(pending.start ? 'Ожидание старта…' : 'Завершаем…')
-    Promise.resolve().then(() => this.request({method:'IPSC_COMMAND', params:{session,packet:Array.from(new Uint8Array(packet))}}))
+    Promise.resolve().then(() => this.request({method:'IPSC_COMMAND', params:{session,packet:Array.from(new Uint8Array(packet)), ...(pending.start ? {delayMs:pending.delayMs} : {})}}))
       .then(response => {
         if (epoch !== this.epoch || !this.active || session !== this.session || this.pending !== pending) return
         if (response?.error || response?.accepted !== true) {

@@ -11,7 +11,7 @@ function fixture() {
   const source=readFileSync(new URL('../lib/phone.js',import.meta.url),'utf8')
     .replace(/^import .*$/gm,'').replace('export class PhoneLink','class PhoneLink')
   vm.runInNewContext(source+'\ncapture(PhoneLink)', {...wire,Date:{now:()=>now},Promise,Uint8Array,ArrayBuffer,DataView,
-    setInterval:cb=>{timers.set(++serial,cb);return serial},clearInterval:id=>timers.delete(id),capture:C=>{Link=C}})
+    setInterval:cb=>{timers.set(++serial,cb);return serial},clearInterval:id=>timers.delete(id),getDelay:()=>3,capture:C=>{Link=C}})
   const link=new Link(()=>{},req=>{calls.push(req);return typeof response==='function'?response(req):response})
   return {link,calls,timers,respond:r=>{response=r},advance:ms=>{now+=ms}}
 }
