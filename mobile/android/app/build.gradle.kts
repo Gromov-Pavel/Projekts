@@ -1,7 +1,27 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
+}
+
+// Keep signing material outside the repository; never silently sign a release as debug.
+val releasePropertiesPath = providers.environmentVariable("IPSC_SIGNING_PROPERTIES").orNull
+val releaseProperties = releasePropertiesPath?.let { path ->
+    Properties().apply { file(path).inputStream().use { load(it) } }
+}
+if (gradle.startParameter.taskNames.any { it.contains("release", ignoreCase = true) } && releaseProperties == null) {
+    throw GradleException("Set IPSC_SIGNING_PROPERTIES to the private release signing properties file")
+}
+
+// Also cover aggregate tasks such as `build` that pull in release packaging.
+gradle.taskGraph.whenReady {
+    if (releaseProperties == null && allTasks.any {
+        it.project.path == project.path && it.name in setOf("packageRelease", "signReleaseBundle")
+    }) {
+        throw GradleException("Release packaging requires IPSC_SIGNING_PROPERTIES")
+    }
 }
 
 android {
@@ -30,11 +50,21 @@ android {
         versionName = flutter.versionName
     }
 
+    signingConfigs {
+        if (releaseProperties != null) {
+            create("ipscRelease") {
+                storeFile = file(requireNotNull(releaseProperties.getProperty("storeFile")))
+                storePassword = requireNotNull(releaseProperties.getProperty("storePassword"))
+                keyAlias = requireNotNull(releaseProperties.getProperty("keyAlias"))
+                keyPassword = requireNotNull(releaseProperties.getProperty("keyPassword"))
+            }
+        }
+    }
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
+            isDebuggable = false
+            isJniDebuggable = false
+            signingConfig = signingConfigs.findByName("ipscRelease")
         }
     }
 }
