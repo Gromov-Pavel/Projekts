@@ -10,10 +10,127 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:ipsc_training/video_analysis.dart';
 
 void main() {
+  test('nearby competing short tones require confirmation instead of guessing the first', () {
+    final frames = List.generate(
+      100,
+      (i) => AudioFrame(
+        i * .02,
+        .01,
+        i >= 10 && i < 16 || i >= 22 && i < 40 ? .9 : 0,
+        i < 20 ? 1400 : 1600,
+      ),
+    );
+    final result = analyzeAudio(frames);
+    expect(result.candidates, hasLength(2));
+    expect(result.beep, isNull);
+  });
+  test('short clean timer tone survives a louder later recording floor', () {
+    final frames = List.generate(
+      100,
+      (i) => AudioFrame(
+        i * .02,
+        i >= 20 && i < 26
+            ? .0012
+            : i < 20
+            ? .0001
+            : .01,
+        i >= 20 && i < 26 ? .9 : 0,
+        2300,
+      ),
+    );
+    final result = analyzeAudio(frames);
+    expect(result.beep, closeTo(.4, .001));
+    expect(result.candidates.single.duration, closeTo(.12, .001));
+    final tooShort = List.generate(
+      100,
+      (i) => AudioFrame(
+        i * .02,
+        i >= 20 && i < 24 ? .1 : .001,
+        i >= 20 && i < 24 ? .9 : 0,
+        2300,
+      ),
+    );
+    expect(analyzeAudio(tooShort).beep, isNull);
+  });
+  test('masked stable tone retains a strong core; one spectral spike is insufficient', () {
+    const core = [.284, .213, .431, .685, .398];
+    final frames = List.generate(
+      100,
+      (i) => AudioFrame(
+        i * .02,
+        .01,
+        i >= 20 && i < 25
+            ? core[i - 20]
+            : i >= 25 && i < 40
+            ? .08
+            : 0,
+        3000,
+      ),
+    );
+    expect(analyzeAudio(frames).beep, closeTo(.4, .001));
+    final spike = List.generate(
+      100,
+      (i) => AudioFrame(
+        i * .02,
+        .01,
+        i == 20
+            ? .9
+            : i > 20 && i < 40
+            ? .06
+            : 0,
+        3000,
+      ),
+    );
+    expect(analyzeAudio(spike).beep, isNull);
+  });
+  test('quiet impulse candidates survive recording gain changes without counting the tail twice', () {
+    for (final gain in [1.0, .1, .01]) {
+      final frames = List.generate(
+        100,
+        (i) => AudioFrame(
+          i * .02,
+          (i == 20 || i == 34
+                  ? .24
+                  : i == 21
+                  ? .12
+                  : i == 24
+                  ? .08
+                  : .0001) *
+              gain,
+          0,
+          2300,
+        ),
+      );
+      expect(analyzeAudio(frames).shotCandidates, [
+        closeTo(.4, .001),
+        closeTo(.68, .001),
+      ]);
+    }
+    final steady = List.generate(
+      100,
+      (i) => AudioFrame(i * .02, .1, .01, 2300),
+    );
+    expect(analyzeAudio(steady).shotCandidates, isEmpty);
+  });
+  test('loud timer tone cannot mask a following quieter broadband impulse', () {
+    final frames = List.generate(
+      100,
+      (i) => AudioFrame(
+        i * .02,
+        i >= 10 && i < 35
+            ? .5
+            : i == 40
+            ? .01
+            : .0001,
+        i >= 10 && i < 35 ? .9 : 0,
+        2300,
+      ),
+    );
+    expect(analyzeAudio(frames).shotCandidates, [closeTo(.8, .001)]);
+  });
   List<AudioFrame> fixture(String name) {
     final data = jsonDecode(
-      File('test/fixtures/audio/$name.json')
-          .readAsStringSync(),
+      File('test/fixtures/audio/$name.json').readAsStringSync(),
     ) as Map<String, dynamic>;
     return (data['frames'] as List)
         .map(
@@ -45,8 +162,7 @@ void main() {
     }
     // The earlier voiced/drifting 1.45–1.65 kHz segment is not the stable 2.3 kHz interval.
     expect(
-      analyzeAudio(fixture('sample03')).candidates
-          .where((b) => b.time < 1.2),
+      analyzeAudio(fixture('sample03')).candidates.where((b) => b.time < 1.2),
       isEmpty,
     );
   });

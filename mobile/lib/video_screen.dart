@@ -766,7 +766,9 @@ class _VideoScreenState extends State<VideoScreen> {
           _candidates = candidates;
         }
         _notice = result.beep == null
-            ? 'Сигнал не найден. Укажите время старта. Найденные выстрелы нужно подтвердить.'
+            ? result.candidates.isEmpty
+                  ? 'Сигнал не найден. Укажите время старта. Найденные выстрелы нужно подтвердить.'
+                  : 'Старт требует подтверждения: сигнал обрезан или рядом найдены разные тоны. Выберите сигнал или укажите время старта.'
             : 'Возможный старт ${compare ? 'B' : 'A'}: ${start.toStringAsFixed(2)} с. Проверьте сигнал и кандидаты выстрелов.';
       });
       if (result.beep == null && mounted && !automatic) {

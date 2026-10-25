@@ -108,7 +108,7 @@ AudioAnalysis analyzeAudio(List<AudioFrame> frames) {
   final noiseFloor = levels.isEmpty
       ? 0.0
       : levels[(levels.length * .2).floor()];
-  final minimumRms = math.max(.0002, noiseFloor * .35);
+  final minimumRms = math.max(.0002, noiseFloor * .10);
   final beeps = <BeepCandidate>[];
   var i = 0;
   while (i < valid.length) {
@@ -128,6 +128,8 @@ AudioAnalysis analyzeAudio(List<AudioFrame> frames) {
     var sumTone = 0.0;
     var maxTone = 0.0;
     var gap = 0;
+    var hasStrongCore = false;
+    final core = <double>[];
     var end = i;
     for (; end < valid.length; end++) {
       final f = valid[end];
@@ -150,16 +152,36 @@ AudioAnalysis analyzeAudio(List<AudioFrame> frames) {
       } else if (++gap > (hasFrequency ? 2 : 0)) {
         break;
       }
+      core.add(tonal ? f.tone : 0);
+      if (core.length > 5) core.removeAt(0);
+      if (hasFrequency &&
+          core.length == 5 &&
+          core.reduce((a, b) => a + b) / 5 >= .40 &&
+          core.any((v) => v >= .65)) {
+        hasStrongCore = true;
+      }
     }
     final duration = valid[last].time - first.time + .02;
     final stability = count / (last - i + 1);
     final meanTone = count == 0 ? 0.0 : sumTone / count;
-    if (duration >= (hasFrequency ? .18 - 1e-6 : .08 - 1e-6) &&
+    // Short clean cores and masked sustained tones occur in the range corpus.
+    // These remain proposals: spectral stability cannot identify the timer owner.
+    final strongShort =
+        hasFrequency &&
+        duration >= .10 - 1e-6 &&
+        stability >= .9 &&
+        meanTone >= .50 &&
+        maxTone >= .65;
+    if ((duration >= (hasFrequency ? .18 - 1e-6 : .08 - 1e-6) || strongShort) &&
         duration <= 1.5 &&
         stability >= .8 &&
-        meanTone >= (hasFrequency ? .22 : .45) &&
+        (meanTone >= (hasFrequency ? .22 : .45) || hasStrongCore) &&
         // Weak narrow-band tails need longer support than a strong timer tone.
-        (!hasFrequency || duration >= .24 - 1e-6 || meanTone >= .35) &&
+        (!hasFrequency ||
+            duration >= .24 - 1e-6 ||
+            meanTone >= .35 ||
+            (duration >= .18 - 1e-6 &&
+                ((meanTone >= .30 && maxTone >= .65) || hasStrongCore))) &&
         maxTone >= (hasFrequency ? .35 : .45)) {
       beeps.add(
         BeepCandidate(
@@ -182,21 +204,49 @@ AudioAnalysis analyzeAudio(List<AudioFrame> frames) {
     }
   }
   final shots = <double>[];
-  var baseline = .005;
+  var baseline = math.max(.0002, noiseFloor);
+  final minimumShotRms = math.max(.001, noiseFloor * 3);
+  var previousRms = 0.0;
   for (final frame in valid) {
     final tonal = beeps.any(
       (b) => frame.time >= b.time && frame.time < b.time + b.duration,
     );
     if (!tonal &&
-        frame.rms > .06 &&
+        frame.tone < .65 &&
+        frame.rms > minimumShotRms &&
         frame.rms > baseline * 4 &&
+        frame.rms > previousRms * 1.6 &&
         (shots.isEmpty || frame.time - shots.last > .15)) {
       shots.add(frame.time);
     }
-    baseline = baseline * .94 + frame.rms * .06;
+    // A loud shot or timer tone must not raise the floor and hide the next shot.
+    if (!tonal && frame.tone < .65) {
+      baseline = math.max(
+        .0002,
+        baseline * .94 + math.min(frame.rms, baseline * 2) * .06,
+      );
+    }
+    previousRms = frame.rms;
   }
+  final ambiguous =
+      beeps.isNotEmpty &&
+      beeps.first.duration < .18 &&
+      beeps.first.frequencyHz != null &&
+      beeps
+          .skip(1)
+          .any(
+            (candidate) =>
+                candidate.time - beeps.first.time <= .5 &&
+                candidate.frequencyHz != null &&
+                !_sameToneFamily(
+                  beeps.first.frequencyHz!,
+                  candidate.frequencyHz!,
+                ),
+          );
   return AudioAnalysis(
-    beep: beeps.isEmpty || beeps.first.atBoundary ? null : beeps.first.time,
+    beep: beeps.isEmpty || beeps.first.atBoundary || ambiguous
+        ? null
+        : beeps.first.time,
     beepCandidates: beeps,
     shotCandidates: shots,
   );
