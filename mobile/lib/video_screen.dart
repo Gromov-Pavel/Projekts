@@ -883,13 +883,6 @@ class _VideoScreenState extends State<VideoScreen> {
     );
   }
 
-  bool _hasAutoShots({bool compare = false}) =>
-      (compare ? _comparisonRun : _run) == null &&
-      (compare
-              ? (_comparisonEntry?['candidates'] as List? ?? []).cast<num>()
-              : _candidates)
-          .any((time) => time >= (compare ? _comparisonStart : _start));
-
   String _label({bool compare = false}) {
     final run = compare ? _comparisonRun : _run;
     if (run != null) return _runLabel(run);
@@ -950,31 +943,27 @@ class _VideoScreenState extends State<VideoScreen> {
     await _comparison?.pause();
     _changed(() => _exporting = true);
     try {
-      final path = await const MethodChannel('pace/audio').invokeMethod<String>(
-        'exportAnalysis',
-        {
-          'primaryPath': compare
-              ? Uri.parse(_player!.dataSource).toFilePath()
-              : _selected!['path'],
-          'start': _start,
-          'times': _times(includeCandidates: true),
-          'primaryLabel':
-              '${_label()}${_hasAutoShots() ? ' · авто (проверить)' : ''}',
-          'mode': compare
-              ? (_overlay && !sideBySide ? 'overlay' : 'sideBySide')
-              : 'single',
-          if (compare) ...{
-            'comparisonPath': Uri.parse(_comparison!.dataSource).toFilePath(),
-            'comparisonStart': _comparisonStart,
-            'comparisonTimes': _times(compare: true, includeCandidates: true),
-            'comparisonLabel':
-                '${_label(compare: true)}${_hasAutoShots(compare: true) ? ' · авто (проверить)' : ''}',
-            'comparisonCorrection':
-                _comparisonOffset - (_comparisonStart - _start),
-            'opacity': _opacity,
-          },
-        },
-      );
+      final path = await const MethodChannel('pace/audio')
+          .invokeMethod<String>('exportAnalysis', {
+            'primaryPath': compare
+                ? Uri.parse(_player!.dataSource).toFilePath()
+                : _selected!['path'],
+            'start': _start,
+            'times': _times(includeCandidates: true),
+            'primaryLabel': _label(),
+            'mode': compare
+                ? (_overlay && !sideBySide ? 'overlay' : 'sideBySide')
+                : 'single',
+            if (compare) ...{
+              'comparisonPath': Uri.parse(_comparison!.dataSource).toFilePath(),
+              'comparisonStart': _comparisonStart,
+              'comparisonTimes': _times(compare: true, includeCandidates: true),
+              'comparisonLabel': _label(compare: true),
+              'comparisonCorrection':
+                  _comparisonOffset - (_comparisonStart - _start),
+              'opacity': _opacity,
+            },
+          });
       if (path == null || !await File(path).exists()) {
         throw StateError('Файл экспорта не создан');
       }
@@ -1010,18 +999,39 @@ class _VideoScreenState extends State<VideoScreen> {
     final elapsed = relative.abs() < .001 ? 0.0 : relative;
     final times = _times(compare: compare, includeCandidates: true);
     final index = videoShotIndex(times, elapsed);
+    final shotTime = index >= 0 ? '${times[index].toStringAsFixed(2)} с' : '—';
+    final split = index >= 0
+        ? '${videoSplit(times, index).toStringAsFixed(2)} с'
+        : '—';
     return Container(
       key: ValueKey(compare ? 'video-hud-b' : 'video-hud-a'),
-      color: Colors.black87,
-      padding: const EdgeInsets.all(8),
-      child: Text(
-        '${compare ? 'B' : 'A'} · ${elapsed < 0 ? 'до старта' : '${elapsed.toStringAsFixed(2)} с'}'
-        ' · ${index + 1}/${times.length} выстр.${_hasAutoShots(compare: compare) ? ' (авто)' : ''}\n'
-        'Последний сплит: ${index >= 0 ? '${videoSplit(times, index).toStringAsFixed(2)} с' : '—'}',
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: .75),
+        border: Border(
+          left: BorderSide(
+            color: compare ? Colors.amberAccent : Colors.tealAccent,
+            width: 3,
+          ),
+        ),
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+      child: Text.rich(
+        TextSpan(
+          children: [
+            TextSpan(
+              text: '${compare ? 'B' : 'A'} · ${_label(compare: compare)}\n',
+              style: const TextStyle(fontSize: 12),
+            ),
+            TextSpan(text: shotTime, style: const TextStyle(fontSize: 26)),
+            TextSpan(text: '   №${index + 1}/${times.length}\n'),
+            TextSpan(text: 'Последний сплит: $split'),
+          ],
+        ),
         style: const TextStyle(
           color: Colors.white,
-          fontSize: 16,
+          fontSize: 13,
           fontWeight: FontWeight.bold,
+          fontFeatures: [FontFeature.tabularFigures()],
         ),
       ),
     );

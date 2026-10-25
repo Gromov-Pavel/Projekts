@@ -203,17 +203,23 @@ class VideoAnalysisExporter(private val activity: Activity) {
             val split = if (shot > 0) run.times[shot - 1] - if (shot > 1) run.times[shot - 2] else 0.0 else 0.0
             val size = (canvas.width * .034f).coerceIn(16f, 64f)
             paint.textSize = size
-            val top = if (bottom) canvas.height - size * 3.4f else 0f
+            val top = if (bottom) canvas.height - size * 4.2f else 0f
             val pad = size * .45f
             paint.color = Color.argb(190, 0, 0, 0)
-            canvas.drawRect(0f, top, canvas.width.toFloat(), top + size * 3.4f, paint)
+            canvas.drawRect(0f, top, canvas.width.toFloat(), top + size * 4.2f, paint)
             paint.color = Color.WHITE
+            paint.textSize = size * .8f
             val label = android.text.TextUtils.ellipsize(run.label, android.text.TextPaint(paint), canvas.width - pad * 2, android.text.TextUtils.TruncateAt.END).toString()
-            canvas.drawText(label, pad, top + size * 1.15f, paint)
-            val timer = if (elapsed < 0) "WAIT" else String.format(Locale.US, "%.2f s", elapsed)
-            val metrics = "$timer  #$shot  SPLIT ${String.format(Locale.US, "%.2f", split)}"
-            paint.textSize = size * min(1f, (canvas.width - pad * 2) / max(1f, paint.measureText(metrics)))
-            canvas.drawText(metrics, pad, top + size * 2.55f, paint)
+            canvas.drawText(label, pad, top + size * .95f, paint)
+            val timer = if (shot == 0) "—" else String.format(Locale.US, "%.2f s", run.times[shot - 1])
+            paint.textSize = size * 1.5f
+            paint.textSize *= min(1f, (canvas.width - pad * 2) / max(1f, paint.measureText(timer)))
+            canvas.drawText(timer, pad, top + size * 2.5f, paint)
+            val splitText = if (shot == 0) "—" else String.format(Locale.US, "%.2f", split)
+            val metrics = "#$shot/${run.times.size}  SPLIT $splitText"
+            paint.textSize = size
+            paint.textSize *= min(1f, (canvas.width - pad * 2) / max(1f, paint.measureText(metrics)))
+            canvas.drawText(metrics, pad, top + size * 3.7f, paint)
         }
     }
 

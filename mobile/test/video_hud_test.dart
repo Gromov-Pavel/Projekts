@@ -96,7 +96,8 @@ void main() {
               matching: find.byType(Text),
             ),
           )
-          .data!;
+          .textSpan!
+          .toPlainText();
       try {
         await tester.pumpWidget(
           const MaterialApp(
@@ -110,9 +111,10 @@ void main() {
         await tester.pumpAndSettle();
         await tester.tap(find.text('Clip A').last);
         await settleIO(tester);
-        expect(hud(false), contains('0/3 выстр. (авто)'));
-        expect(hud(true), contains('0/2 выстр. (авто)'));
-        expect(hud(false), contains('Последний сплит: —'));
+        expect(hud(false), contains('№0/3'));
+        expect(hud(true), contains('№0/2'));
+        expect(hud(false), contains('—'));
+        expect(hud(false), isNot(contains('0.00 с')));
         await tester.scrollUntilVisible(
           find.byType(ShotTimeline),
           250,
@@ -127,10 +129,27 @@ void main() {
           scrollable: find.byType(Scrollable).first,
         );
         await tester.pumpAndSettle();
-        expect(hud(false), contains('2/3 выстр. (авто)'));
+        expect(hud(false), contains('№2/3'));
         expect(hud(false), contains('Последний сплит: 0.30 с'));
-        expect(hud(true), contains('2/2 выстр. (авто)'));
+        expect(hud(false), contains('1.30 с'));
+        expect(hud(false), isNot(contains('1.40 с')));
+        expect(hud(true), contains('1.20 с'));
+        expect(hud(true), contains('№2/2'));
         expect(hud(true), contains('Последний сплит: 0.20 с'));
+        tester.widget<ShotTimeline>(find.byType(ShotTimeline)).onSeek(1.55);
+        await tester.pumpAndSettle();
+        expect(hud(false), contains('1.30 с'));
+        tester.widget<ShotTimeline>(find.byType(ShotTimeline)).onSeek(1.9);
+        await tester.pumpAndSettle();
+        expect(hud(false), contains('1.60 с'));
+        expect(hud(true), contains('1.20 с'));
+        tester.widget<ShotTimeline>(find.byType(ShotTimeline)).onSeek(.4);
+        await tester.pumpAndSettle();
+        expect(hud(false), contains('№0/3'));
+        expect(hud(false), isNot(contains('1.60 с')));
+        tester.widget<ShotTimeline>(find.byType(ShotTimeline)).onSeek(1.4);
+        await tester.pumpAndSettle();
+
         final full = find.byTooltip('Полноэкранный разбор');
         await tester.scrollUntilVisible(
           full,
@@ -142,7 +161,7 @@ void main() {
         tester.view.physicalSize = const Size(640, 360);
         tester.view.devicePixelRatio = 1;
         await tester.pumpAndSettle();
-        expect(hud(false), contains('2/3 выстр. (авто)'));
+        expect(hud(false), contains('№2/3'));
         final aRect = tester.getRect(find.byKey(const ValueKey('video-hud-a')));
         final bRect = tester.getRect(find.byKey(const ValueKey('video-hud-b')));
         expect(aRect.right, lessThanOrEqualTo(bRect.left));
@@ -190,7 +209,8 @@ void main() {
           closeTo(1.6, .0001),
         ]);
         expect(exported!['comparisonTimes'], [1.0, closeTo(1.2, .0001)]);
-        expect(exported!['primaryLabel'], contains('авто (проверить)'));
+        expect(exported!['primaryLabel'], isNot(contains('авто')));
+        expect(exported!['comparisonLabel'], isNot(contains('проверить')));
         final saved = jsonDecode(metadata.readAsStringSync()) as List;
         expect(saved[0]['markers'], [3.0]);
         expect(saved[0]['candidates'], [3.005, 3.3, 3.6]);

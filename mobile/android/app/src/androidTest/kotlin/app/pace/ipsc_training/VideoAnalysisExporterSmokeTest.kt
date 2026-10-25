@@ -117,8 +117,8 @@ class VideoAnalysisExporterSmokeTest {
                         val first = metadata.getFrameAtTime(0, MediaMetadataRetriever.OPTION_CLOSEST)!!
                         val image = File(instrumentation.targetContext.filesDir, "clipped-signal-overlay-first-frame.png")
                         image.outputStream().use { stream -> first.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, stream) }
-                        assertTimerAtStart(first, .2, bottom = false)
-                        assertTimerAtStart(first, .2, bottom = true)
+                        assertTimerAtStart(first, "—", bottom = false)
+                        assertTimerAtStart(first, "—", bottom = true)
                         first.recycle()
                     }
                     if (mode == "overlay") assertTrue("Comparison HUD must remain readable at the bottom", bottomTextPixels > 20)
@@ -132,23 +132,22 @@ class VideoAnalysisExporterSmokeTest {
         }
     }
 
-    private fun assertTimerAtStart(frame: android.graphics.Bitmap, seconds: Double, bottom: Boolean) {
+    private fun assertTimerAtStart(frame: android.graphics.Bitmap, timer: String, bottom: Boolean) {
         val expected = android.graphics.Bitmap.createBitmap(frame.width, frame.height, android.graphics.Bitmap.Config.ARGB_8888)
         val canvas = android.graphics.Canvas(expected)
         val size = (frame.width * .034f).coerceIn(16f, 64f)
         val pad = size * .45f
-        val top = if (bottom) frame.height - size * 3.4f else 0f
+        val top = if (bottom) frame.height - size * 4.2f else 0f
         val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
             color = android.graphics.Color.WHITE
             typeface = android.graphics.Typeface.create(android.graphics.Typeface.MONOSPACE, android.graphics.Typeface.BOLD)
-            textSize = size
+            textSize = size * 1.5f
         }
-        val timer = String.format(java.util.Locale.US, "%.2f s", seconds)
-        canvas.drawText(timer, pad, top + size * 2.55f, paint)
+        canvas.drawText(timer, pad, top + size * 2.5f, paint)
         var matches = 0
         var pixels = 0
         val right = (pad + paint.measureText(timer)).toInt().coerceAtMost(frame.width)
-        for (y in max(0, (top + size * 1.5f).toInt()) until min(frame.height, (top + size * 2.65f).toInt())) {
+        for (y in max(0, (top + size * .9f).toInt()) until min(frame.height, (top + size * 2.6f).toInt())) {
             for (x in pad.toInt() until right) {
                 if (android.graphics.Color.alpha(expected.getPixel(x, y)) > 245) {
                     pixels++
@@ -159,7 +158,7 @@ class VideoAnalysisExporterSmokeTest {
         }
         expected.recycle()
         assertTrue("Missing timer glyphs in clipped-signal HUD", pixels > 20)
-        assertTrue("Clipped-signal HUD must start at0.20s (bottom=$bottom, matches=$matches/$pixels)", matches.toDouble() / pixels >= .95)
+        assertTrue("HUD before first shot must show a dash (bottom=$bottom, matches=$matches/$pixels)", matches.toDouble() / pixels >= .95)
     }
 
     @Test fun cancelBeforeEncoderStarts() {
