@@ -1,4 +1,4 @@
-import { getDelay } from './settings'
+import { getStartDelayMs } from './settings'
 import { decodeState, acceptState, commandPacket } from './wire'
 
 export class PhoneLink {
@@ -64,7 +64,7 @@ export class PhoneLink {
       if (!start && this.pending.start) { this.stopRequested = true; this.show('Завершаем…') }
       return
     }
-    const pending = {start, delayMs:start ? getDelay() * 1000 : undefined, run:this.state.run, at:Date.now(), lastAttempt:0, attempts:0, session:this.session}
+    const pending = {start, delayMs:start ? getStartDelayMs() : undefined, run:this.state.run, at:Date.now(), lastAttempt:0, attempts:0, session:this.session}
     this.pending = pending; this.send(pending)
   }
   send(pending) {

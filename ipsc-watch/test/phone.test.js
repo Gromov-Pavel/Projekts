@@ -5,13 +5,13 @@ import vm from 'node:vm'
 import * as wire from '../lib/wire.js'
 
 const flush = async () => { for(let i=0;i<10;i++) await Promise.resolve() }
-function fixture() {
+function fixture({sample=()=>3000}={}) {
   let Link, now=10000, serial=0, response
   const timers=new Map(), calls=[]
   const source=readFileSync(new URL('../lib/phone.js',import.meta.url),'utf8')
     .replace(/^import .*$/gm,'').replace('export class PhoneLink','class PhoneLink')
   vm.runInNewContext(source+'\ncapture(PhoneLink)', {...wire,Date:{now:()=>now},Promise,Uint8Array,ArrayBuffer,DataView,
-    setInterval:cb=>{timers.set(++serial,cb);return serial},clearInterval:id=>timers.delete(id),getDelay:()=>3,capture:C=>{Link=C}})
+    setInterval:cb=>{timers.set(++serial,cb);return serial},clearInterval:id=>timers.delete(id),getStartDelayMs:sample,capture:C=>{Link=C}})
   const link=new Link(()=>{},req=>{calls.push(req);return typeof response==='function'?response(req):response})
   return {link,calls,timers,respond:r=>{response=r},advance:ms=>{now+=ms}}
 }
@@ -90,4 +90,16 @@ test('supported external timer start and stop wait for hardware state, not trans
   link.receive(running);await flush();assert.equal(link.pending,null)
   link.command(false);await flush();assert.ok(link.pending)
   link.receive(frame({run:8,revision:11,phase:3,flags:32}));assert.equal(link.pending,null)
+})
+
+test('a new start samples delay once; pending taps never resample it',async()=>{
+  let sampled=0
+  const f=fixture({sample:()=>++sampled===1?3500:5750}),{link}=f
+  f.respond(req=>req.method==='IPSC_COMMAND'?{accepted:true}:frame())
+  link.connect();await flush();link.command(true);link.command(true);await flush()
+  assert.equal(sampled,1)
+  link.receive(frame({run:8,revision:10,phase:2}));link.receive(frame({run:8,revision:11,phase:3}))
+  link.command(true);await flush()
+  assert.equal(sampled,2)
+  assert.deepEqual(f.calls.filter(r=>r.method==='IPSC_COMMAND').map(r=>r.params.delayMs),[3500,5750])
 })

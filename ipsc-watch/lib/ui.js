@@ -25,3 +25,5 @@ export function settingsIcon(click) {
   icon.addEventListener(ui.event.CLICK_UP, click)
   return icon
 }
+
+export function show(widget, visible) { widget.setProperty(ui.prop.VISIBLE, visible) }
