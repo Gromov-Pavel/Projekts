@@ -58,7 +58,8 @@ class TrainingHome extends StatefulWidget {
   State<TrainingHome> createState() => _TrainingHomeState();
 }
 
-class _TrainingHomeState extends State<TrainingHome> {
+class _TrainingHomeState extends State<TrainingHome>
+    with WidgetsBindingObserver {
   late final store = widget.store ?? TrainingStore();
   AppData? data;
   TimerSession? _timerSession;
@@ -92,6 +93,7 @@ class _TrainingHomeState extends State<TrainingHome> {
   )..restoreKnownTimers();
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _watchBridge?.dispose();
     _timerSession?.dispose();
     super.dispose();
@@ -126,8 +128,44 @@ class _TrainingHomeState extends State<TrainingHome> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    watchBridge.attachPhoneLauncher(_openPhoneTimer);
     unawaited(watchBridge.restore());
     load();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    _watchBridge?.foreground(state == AppLifecycleState.resumed);
+  }
+
+  Future<void> _openPhoneTimer() async {
+    if (!mounted ||
+        data == null ||
+        WidgetsBinding.instance.lifecycleState != AppLifecycleState.resumed) {
+      throw StateError('Откройте IPSC на телефоне');
+    }
+    unawaited(
+      Navigator.push(
+        context,
+        MaterialPageRoute<void>(
+          builder: (_) => PhoneTimerScreen(
+            watchBridge: watchBridge,
+            onSave: (times, source) => change(
+              (d) => d.runs.add(
+                Run(
+                  id: newId(),
+                  times: times,
+                  source: source,
+                  shooterId: trainingShooterId,
+                  stageId: trainingStageId,
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
   }
 
   String newId() => DateTime.now().microsecondsSinceEpoch.toString();
@@ -487,25 +525,7 @@ class _TrainingHomeState extends State<TrainingHome> {
                       runSpacing: 8,
                       children: [
                         OutlinedButton.icon(
-                          onPressed: () => Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) => PhoneTimerScreen(
-                                watchBridge: watchBridge,
-                                onSave: (times, source) => change(
-                                  (d) => d.runs.add(
-                                    Run(
-                                      id: newId(),
-                                      times: times,
-                                      source: source,
-                                      shooterId: trainingShooterId,
-                                      stageId: trainingStageId,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
+                          onPressed: _openPhoneTimer,
                           icon: const Icon(Icons.mic),
                           label: const Text('Таймер телефона'),
                         ),

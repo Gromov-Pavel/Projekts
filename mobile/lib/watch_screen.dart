@@ -39,20 +39,13 @@ class WatchScreen extends StatelessWidget {
             ),
           ],
           const SizedBox(height: 24),
-          DropdownButtonFormField<bool>(
-            initialValue: bridge.phone,
-            decoration: const InputDecoration(labelText: 'Источник для часов'),
-            items: const [
-              DropdownMenuItem(value: false, child: Text('Внешний таймер')),
-              DropdownMenuItem(value: true, child: Text('Таймер телефона')),
-            ],
-            onChanged:
-                bridge.phase == WatchPhase.running ||
-                    bridge.phase == WatchPhase.preparing
-                ? null
-                : (value) {
-                    if (value != null) bridge.selectPhone(value);
-                  },
+          ListTile(
+            title: const Text('Источник выбирается автоматически'),
+            subtitle: Text(
+              bridge.phone
+                  ? 'Внешний таймер не подключён — таймер телефона'
+                  : 'Подключённый внешний таймер',
+            ),
           ),
           const SizedBox(height: 12),
           Text(

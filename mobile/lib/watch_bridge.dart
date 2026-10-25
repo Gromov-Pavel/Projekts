@@ -64,11 +64,35 @@ class WatchBridge extends ChangeNotifier {
   WatchPhase phase = WatchPhase.unavailable;
   List<double> times = [];
   bool _phoneCanControl = false;
+  bool automaticSource = true;
+  bool _foreground = true;
+  Future<void> Function()? _phoneLauncher;
+
+  void attachPhoneLauncher(Future<void> Function() launcher) {
+    _phoneLauncher = launcher;
+    _externalChanged();
+  }
+
+  void foreground(bool value) {
+    _foreground = value;
+    if (phone && _phoneCommand == null) {
+      phase = value && _phoneLauncher != null
+          ? WatchPhase.idle
+          : WatchPhase.unavailable;
+    }
+    _publish();
+    _notify();
+  }
+
   Future<void> Function(bool start, int? delayMs)? _phoneCommand;
   StreamSubscription<dynamic>? _events;
   Uint8List? _lastPublished;
   Future<void> _writes = Future.value();
-  bool get controllable => phone && _phoneCommand != null && _phoneCanControl;
+  bool get controllable =>
+      phone &&
+      _foreground &&
+      ((_phoneCommand != null && _phoneCanControl) ||
+          (_phoneCommand == null && _phoneLauncher != null));
 
   void _notify() {
     if (!_disposed) notifyListeners();
@@ -185,6 +209,7 @@ class WatchBridge extends ChangeNotifier {
 
   void selectPhone(bool value) {
     if (phase == WatchPhase.running || phase == WatchPhase.preparing) return;
+    automaticSource = false;
     phone = value;
     _externalKey = null;
     _newRun();
@@ -204,7 +229,9 @@ class WatchBridge extends ChangeNotifier {
     _phoneCanControl = false;
     if (phone) {
       _newRun();
-      phase = WatchPhase.unavailable;
+      phase = _foreground && _phoneLauncher != null
+          ? WatchPhase.idle
+          : WatchPhase.unavailable;
       _publish();
       _notify();
     }
@@ -233,7 +260,38 @@ class WatchBridge extends ChangeNotifier {
   }
 
   void _externalChanged() {
-    if (phone || _disposed) return;
+    if (_disposed) return;
+    if (automaticSource) {
+      if (phone && [WatchPhase.preparing, WatchPhase.running].contains(phase)) {
+        return;
+      }
+      final connected = session.links.values.where((l) => l.device.isConnected);
+      final selected = session.selected;
+      final external = selected != null && selected.device.isConnected
+          ? selected
+          : connected.firstOrNull;
+      if (external == null) {
+        if (!phone) {
+          phone = true;
+          _externalKey = null;
+          _newRun();
+          times = [];
+          phase = controllable ? WatchPhase.idle : WatchPhase.unavailable;
+        }
+        _publish();
+        _notify();
+        return;
+      }
+      if (session.selectedId != external.device.remoteId.str) {
+        session.select(external.device.remoteId.str);
+        return;
+      }
+      if (phone) {
+        phone = false;
+        _externalKey = null;
+      }
+    }
+    if (phone) return;
     final link = session.selected;
     final series = link?.active ?? link?.pending.lastOrNull;
     final key = '${session.selectedId}/${series?.id}';
@@ -317,6 +375,21 @@ class WatchBridge extends ChangeNotifier {
     try {
       _commandBusy = true;
       _failed = false;
+      if (raw['op'] == 1 && _phoneCommand == null && _phoneLauncher != null) {
+        await _phoneLauncher!();
+        for (
+          var attempt = 0;
+          attempt < 100 &&
+              _foreground &&
+              (_phoneCommand == null || !_phoneCanControl);
+          attempt++
+        ) {
+          await Future<void>.delayed(const Duration(milliseconds: 50));
+        }
+      }
+      if (!_foreground || _phoneCommand == null || !_phoneCanControl) {
+        throw StateError('Откройте готовый телефонный таймер');
+      }
       await _phoneCommand!(
         raw['op'] == 1,
         raw['op'] == 1 ? delayMs as int? : null,

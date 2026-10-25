@@ -96,6 +96,31 @@ void main() {
     },
   );
 
+  test('no external timer chooses phone but never starts it without a fresh command', () async {
+    final bridge = WatchBridge(TimerSession(onImport: (_, _) async => true));
+    addTearDown(bridge.dispose);
+    final starts = <bool>[];
+    var launches = 0;
+    bridge.attachPhoneLauncher(() async {
+      launches++;
+      bridge.attachPhone((start, delay) async {
+        starts.add(start);
+      });
+      bridge.phoneState(WatchPhase.idle, [], canControl: true);
+    });
+    expect(bridge.phone, true);
+    expect(bridge.phase, WatchPhase.idle);
+    expect(starts, isEmpty);
+    expect(launches, 0);
+    bridge.enabled = bridge.approved = true;
+    await bridge.handleCommand({'run': bridge.run, 'op': 1, 'delayMs': 3000});
+    expect(launches, 1);
+    expect(starts, [true]);
+    bridge.foreground(false);
+    await bridge.handleCommand({'run': bridge.run, 'op': 1});
+    expect(starts, [true]);
+  });
+
   test('wire vector matches watch; first shot has no fabricated split', () {
     final bytes = watchPacket(
       run: 7,
