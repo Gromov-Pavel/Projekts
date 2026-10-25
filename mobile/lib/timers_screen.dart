@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 
 import 'timer_protocol.dart';
 import 'timer_session.dart';
@@ -38,14 +37,17 @@ class TimersScreen extends StatelessWidget {
   }
 
   Future<void> _start(BuildContext context, TimerLink link) async {
-    final c = session.legacyCharacteristic(link);
+    final c = session.notificationCharacteristic(link);
     if (c == null) {
       session.showMessage(
-        'Канал Special Pie не обнаружен. Откройте технические подробности.',
+        'Канал выбранного протокола не обнаружен. Откройте технические подробности.',
       );
       return;
     }
-    if (await _confirmLegacy(context, link)) await session.subscribe(link, c);
+    if (link.profile != TimerProtocols.legacyId ||
+        await _confirmLegacy(context, link)) {
+      await session.subscribe(link, c);
+    }
   }
 
   Widget _device(BuildContext context, TimerLink link) {
@@ -146,7 +148,7 @@ class TimersScreen extends StatelessWidget {
                 for (final c in chars.where(
                   (c) =>
                       link.profile == TimerProtocols.rawId ||
-                      (c.serviceUuid == Guid('fff0') && c.uuid == Guid('fff1')),
+                      c == session.notificationCharacteristic(link),
                 ))
                   TextButton(
                     onPressed:
@@ -206,6 +208,21 @@ class TimersScreen extends StatelessWidget {
               ),
             const Text(
               'Протокол определяется по данным таймера. Сохранённые таймеры подключаются автоматически, если это включено. После ручного отключения автоподключение приостанавливается до следующего запуска приложения.',
+            ),
+            ExpansionTile(
+              title: const Text('Библиотека таймеров'),
+              children: [
+                for (final profile in TimerProtocols.profiles.where(
+                  (p) => p.service != null,
+                ))
+                  ListTile(title: Text(profile.label)),
+                const Padding(
+                  padding: EdgeInsets.all(12),
+                  child: Text(
+                    'SG, ProTimer v2, RangeTech и AMG пока проверены только на тестовых пакетах. Времена сверяйте с экраном таймера.\n\nKestrel, Edge, ShooterKun, SSP, SG SST09714, V2CM и ProTimer v1 исследованы, рабочие профили ещё не включены. CED7000 RF требует отдельного радиомоста.\n\nПрямая связь часов выбирается на самих часах. Перед этим отключите таймер от телефона.',
+                  ),
+                ),
+              ],
             ),
             const SizedBox(height: 12),
             FilledButton.icon(

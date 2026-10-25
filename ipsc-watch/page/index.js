@@ -1,14 +1,17 @@
 import { BasePage } from '@zeppos/zml/base-page'
 import { replace } from '@zos/router'
 import { PhoneLink } from '../lib/phone'
+import { DirectTimerLink } from '../lib/direct'
 import { applyScreenPolicy, releaseScreen } from '../lib/screen'
-import { getMode } from '../lib/settings'
+import { getMode, getTransport } from '../lib/settings'
 import { label, update, actionButton, actionColor, settingsIcon } from '../lib/ui'
 
 Page(BasePage({
   onInit() {
     this.policy = null
-    this.link = new PhoneLink(() => { if (this.status) this.render() }, data => this.request(data, {timeout:4000}))
+    const update = () => { if (this.status) this.render() }
+    this.link = getTransport() === 'direct' ? new DirectTimerLink(update)
+      : new PhoneLink(update, data => this.request(data, {timeout:4000}))
   },
   build() {
     settingsIcon(() => replace({url:'page/settings'}))
@@ -35,12 +38,12 @@ Page(BasePage({
     update(this.count, String(state?.count || 0))
     update(this.split, state?.split == null ? '—' : (state.split / 1000).toFixed(2))
     let status = this.link.message
-    if (fresh && state.revision !== 0 && !state.failed && !this.link.pending) {
+    if (!this.link.direct && fresh && state.revision !== 0 && !state.failed && !this.link.pending) {
       if (state.phase === 4) status = state.phone ? 'Откройте таймер на телефоне' : 'Подключите внешний таймер'
       else if (!state.phone) status = state.phase === 3 ? 'Серия завершена'
         : [1, 2].includes(state.phase) ? 'Серия идёт · внешний таймер' : 'Внешний таймер · готов'
     }
-    if (fresh && state.revision !== 0 && !state.phone && !state.control && this.externalNotice && [0, 3].includes(state.phase)) status = 'Special Pie: старт на самом таймере'
+    if (fresh && state.revision !== 0 && !state.phone && !state.control && this.externalNotice && [0, 3].includes(state.phase)) status = 'Старт на самом таймере'
     if (fresh && [1, 2].includes(state.phase)) this.externalNotice = false
     update(this.status, status)
     const stopping = this.link.stopRequested || (this.link.pending && !this.link.pending.start)

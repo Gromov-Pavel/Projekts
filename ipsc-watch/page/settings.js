@@ -6,11 +6,12 @@ Page({
   build() {
     releaseScreen()
     label('Настройки', 90, 30, 300, 45, 30)
-    label('Версия 0.7.0', 90, 79, 300, 24, 18, 0x97a5b4)
-    this.delay = button('', 55, 126, 370, 84, () => replace({url:'page/delay'}))
-    this.delayMode = label('', 55, 218, 370, 30, 18, 0x97a5b4)
-    this.training = button('', 55, 282, 370, 54, () => this.choose('training'))
-    this.run = button('', 55, 346, 370, 54, () => this.choose('run'))
+    label('Версия 0.8.2', 90, 79, 300, 24, 18, 0x97a5b4)
+    button('Подключение таймера',55,112,370,54,()=>replace({url:'page/timer'}))
+    this.delay = button('', 55, 180, 370, 54, () => replace({url:'page/delay'}))
+    this.delayMode = label('', 55, 238, 370, 26, 18, 0x97a5b4)
+    this.training = button('', 55, 278, 370, 54, () => this.choose('training'))
+    this.run = button('', 55, 342, 370, 54, () => this.choose('run'))
     button('Назад', 145, 413, 190, 48, () => replace({ url: 'page/index' }))
     this.refresh()
   },

@@ -5,8 +5,8 @@
     "appName": "IPSC тренировОчка",
     "appType": "app",
     "version": {
-      "code": 13,
-      "name": "0.7.0"
+      "code": 16,
+      "name": "0.8.2"
     },
     "vender": "Pavel Gromov",
     "description": "Bluetooth-экран выбранного таймера и управление телефонным таймером",
@@ -21,7 +21,8 @@
   },
   "permissions": [
     "device:os.local_storage",
-    "data:os.device.info"
+    "data:os.device.info",
+    "device:os.ble"
   ],
   "targets": {
     "trex3pro48": {
@@ -30,7 +31,8 @@
           "pages": [
             "page/index",
             "page/settings",
-            "page/delay"
+            "page/delay",
+            "page/timer"
           ]
         },
         "app-side": {

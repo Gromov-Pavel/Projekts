@@ -17,7 +17,7 @@ test('live page shows phone metrics, switches controls and releases Zepp link on
     close() { closed++ }
   }
   vm.runInNewContext(source, { PhoneLink,
-    BasePage:p=>p, Page: p => {page=p}, replace:()=>{}, getMode:()=>'run',
+    BasePage:p=>p, Page: p => {page=p}, replace:()=>{}, getMode:()=>'run',getTransport:()=>'phone',
     applyScreenPolicy:value=>awake.push(value), releaseScreen:()=>released++,
     label:text=>{const w={text};labels.push(w);return w},
     settingsIcon:click=>{buttons.push({text:'⚙',click})},
@@ -39,7 +39,7 @@ test('live page shows phone metrics, switches controls and releases Zepp link on
   page.link.state.phone=false; page.link.state.control=false; page.render()
   assert.equal(buttons[0].text,'СТАРТ'); assert.deepEqual(commands,[false,true])
   assert.equal(page.status.text,'Серия завершена')
-  buttons[0].click(); assert.match(page.status.text,/старт на самом таймере/)
+  buttons[0].click(); assert.match(page.status.text,/Старт на самом таймере/)
   page.link.state={revision:10,phase:2,total:0,count:0,phone:false,control:false}; page.render()
   assert.equal(page.status.text,'Серия идёт · внешний таймер'); assert.equal(buttons[0].text,'Серия идёт')
   assert.equal(page.total.text,'0.00'); buttons[0].click(); assert.deepEqual(commands,[false,true])

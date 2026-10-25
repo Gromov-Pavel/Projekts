@@ -2,6 +2,34 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:ipsc_training/timer_protocol.dart';
 
 void main() {
+  test(
+    'SG retains milliseconds, ignores ACK, duplicates and wrong session',
+    () {
+      final d = TimerProtocols.decoder(TimerProtocols.sgId);
+      expect(d.add([2, 0, 0]), isEmpty);
+      final start = [7, 0, 0, 0, 0, 9, 0, 30];
+      final shot = [11, 4, 0, 0, 0, 9, 0, 0, 0, 0, 6, 105];
+      expect(d.add(start).single.kind, TimerEventKind.start);
+      expect(d.add(start), isEmpty);
+      expect(d.add(shot).single.seconds, 1.641);
+      expect(d.add(shot), isEmpty);
+      expect(d.add([11, 4, 0, 0, 0, 8, 0, 1, 0, 0, 8, 100]), isEmpty);
+      expect(d.add([7, 3, 0, 0, 0, 9, 0, 1]).single.kind, TimerEventKind.stop);
+      expect(d.add(shot), isEmpty);
+      expect(TimerProtocols.controlPacket(TimerProtocols.sgId, true), [1, 0]);
+      expect(TimerProtocols.controlPacket(TimerProtocols.sgId, false), [1, 3]);
+      for (var cut = 1; cut < 20; cut++) {
+        final decoder = TimerProtocols.decoder(TimerProtocols.sgId),
+            bytes = [...start, ...shot];
+        final events = [
+          ...decoder.add(bytes.sublist(0, cut)),
+          ...decoder.add(bytes.sublist(cut)),
+        ];
+        expect(events.length, 2);
+        expect(events.last.milliseconds, 1641);
+      }
+    },
+  );
   const start = [0xf8, 0xf9, 0x34, 3, 0xf9, 0xf8];
   const stop = [0xf8, 0xf9, 0x18, 3, 0xf9, 0xf8];
   // Literal example from the implementer's protocol document, not a user capture.

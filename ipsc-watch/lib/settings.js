@@ -34,3 +34,15 @@ export function getStartDelayMs() {
   const range = getDelayRange()
   return range.min * 1000 + Math.floor(Math.random() * ((range.max - range.min) * 1000 + 1))
 }
+
+export function getTransport() { return storage.getItem('timerTransport')==='direct'?'direct':'phone' }
+export function setTransport(value) { if(value==='direct'||value==='phone')storage.setItem('timerTransport',value) }
+export function getDirectTimer() {
+  try {
+    const value=JSON.parse(storage.getItem('directTimer')||'null')
+    if(value && Array.isArray(value.address) && value.address.length===6 &&
+      value.address.every(b=>Number.isInteger(b)&&b>=0&&b<=255) && typeof value.profile==='string' && typeof value.name==='string')return value
+  }catch(_){}
+  return null
+}
+export function setDirectTimer(value) { storage.setItem('directTimer',JSON.stringify(value)) }

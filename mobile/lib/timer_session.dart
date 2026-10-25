@@ -323,9 +323,12 @@ class TimerSession extends ChangeNotifier {
       );
       if (device.platformName.isNotEmpty) saved.name = device.platformName;
       await _savePreferences();
-      final c = legacyCharacteristic(link);
+      final detected = detectedProfile(link);
+      link.profile = detected?.id == TimerProtocols.legacyId
+          ? TimerProtocols.autoId
+          : detected?.id ?? TimerProtocols.rawId;
+      final c = notificationCharacteristic(link);
       if (c != null) {
-        link.profile = TimerProtocols.autoId;
         await subscribe(link, c);
       } else {
         link.profile = TimerProtocols.rawId;
@@ -384,6 +387,10 @@ class TimerSession extends ChangeNotifier {
   ) async {
     try {
       await link.notifications?.cancel();
+      if (link.profile == TimerProtocols.autoId &&
+          detectedProfile(link)?.id != TimerProtocols.legacyId) {
+        link.profile = detectedProfile(link)?.id ?? TimerProtocols.rawId;
+      }
       link.decoder = TimerProtocols.decoder(link.profile);
       finishSeries(link, partial: true);
       link.notifications = characteristic.onValueReceived.listen((bytes) {
@@ -429,7 +436,8 @@ class TimerSession extends ChangeNotifier {
     if (link.profile == TimerProtocols.autoId && events.isNotEmpty) {
       link.profile = events.first.profileId;
       link.acceptedLegacy = true;
-      link.status = 'Special Pie legacy: протокол распознан, приём включён.';
+      link.status =
+          '${TimerProtocols.profile(link.profile)?.label}: протокол распознан, приём включён.';
       final saved = preferences.timers[link.device.remoteId.str];
       if (saved != null) {
         saved.profile = link.profile;
@@ -541,13 +549,55 @@ class TimerSession extends ChangeNotifier {
       )
       .firstOrNull;
 
+  TimerProfile? detectedProfile(TimerLink link) => TimerProtocols.profiles
+      .where(
+        (p) =>
+            (p.id != 'amg-nus' ||
+                RegExp(r'^(AMG(?: |$)|PS )', caseSensitive: false).hasMatch(
+                  (link.device.platformName.isEmpty
+                      ? preferences.timers[link.device.remoteId.str]?.name ?? ''
+                      : link.device.platformName),
+                )) &&
+            p.service != null &&
+            link.services.any(
+              (s) =>
+                  s.uuid == Guid(p.service!) &&
+                  s.characteristics.any(
+                    (c) =>
+                        c.uuid == Guid(p.notify!) &&
+                        (c.properties.notify || c.properties.indicate),
+                  ),
+            ),
+      )
+      .firstOrNull;
+
+  TimerProfile? _effectiveProfile(TimerLink link) =>
+      link.profile == TimerProtocols.autoId
+      ? detectedProfile(link)
+      : TimerProtocols.profile(link.profile);
+
+  BluetoothCharacteristic? notificationCharacteristic(TimerLink link) {
+    final p = _effectiveProfile(link);
+    if (p?.service == null || p?.notify == null) return null;
+    return link.services
+        .expand((s) => s.characteristics)
+        .where(
+          (c) =>
+              c.serviceUuid == Guid(p!.service!) &&
+              c.uuid == Guid(p.notify!) &&
+              (c.properties.notify || c.properties.indicate),
+        )
+        .firstOrNull;
+  }
+
   BluetoothCharacteristic? _controlCharacteristic(TimerLink link) => link
       .services
       .expand((s) => s.characteristics)
       .where(
         (c) =>
-            c.serviceUuid == Guid('fff0') &&
-            c.uuid == Guid('fff2') &&
+            _effectiveProfile(link)?.write != null &&
+            c.serviceUuid == Guid(_effectiveProfile(link)!.service!) &&
+            c.uuid == Guid(_effectiveProfile(link)!.write!) &&
             (c.properties.write || c.properties.writeWithoutResponse),
       )
       .firstOrNull;
@@ -557,7 +607,7 @@ class TimerSession extends ChangeNotifier {
       link.device.isConnected &&
       link.notifications != null &&
       _controlCharacteristic(link) != null &&
-      (link.profile == TimerProtocols.legacyId ||
+      (TimerProtocols.profile(link.profile)?.write != null ||
           (link.profile == TimerProtocols.autoId &&
               preferences.timers[link.device.remoteId.str]?.profile ==
                   TimerProtocols.legacyId));
@@ -567,7 +617,10 @@ class TimerSession extends ChangeNotifier {
       throw StateError('Выбранный таймер не готов к управлению');
     }
     final characteristic = _controlCharacteristic(link)!;
-    final packet = TimerProtocols.controlPacket(TimerProtocols.legacyId, start);
+    final packet = TimerProtocols.controlPacket(
+      _effectiveProfile(link)!.id,
+      start,
+    );
     await characteristic.write(
       packet,
       withoutResponse: !characteristic.properties.write,
