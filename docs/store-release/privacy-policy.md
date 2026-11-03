@@ -1,6 +1,6 @@
 # Политика конфиденциальности «IPSC тренировОчка»
 
-Редакция от 2 ноября 2026 года для Android 0.14.1 и Zepp 0.9.1/0.10.0.
+Редакция от 3 ноября 2026 года для Android 0.19.1 и Zepp 0.10.1 (IPSC Training).
 
 Разработчик: Павел Громов. Контакт по вопросам приложения и данных: pavgromov@gmail.com.
 
@@ -13,6 +13,8 @@
 Bluetooth используется для поиска и подключения выбранных таймеров и часов. Имена, адреса и служебные данные устройства нужны для соединения, управления, получения результатов и переподключения. На старых версиях Android поиск Bluetooth может требовать системного разрешения местоположения; приложение не использует его для построения истории перемещений.
 
 Приложение часов сохраняет локальные настройки, выбранное устройство и служебные сведения о паре. При работе через телефон Zepp Side Service передаёт состояние и команды локальному серверу Android внутри телефона. Связь подтверждается пользователем, служебные ключи сохраняются локально. Видео через этот мост не передаются. В прямом режиме часы работают с выбранным Bluetooth-таймером без переноса истории в телефон.
+
+При выборе Garmin официальный Connect IQ SDK обменивается командами и состоянием с выбранными часами через Garmin Connect. В приложение передаются сведения об устройстве и доставке сообщений, необходимые для связи. Платформа Garmin обрабатывает свои учётные и технические данные по собственной политике. Видео и исходный звук через Garmin не передаются.
 
 ## Разрешения и фоновые функции
 
@@ -35,3 +37,15 @@ Bluetooth используется для поиска и подключения
 ## Изменения и связь
 
 При изменении обработки данных политика обновляется вместе с соответствующим выпуском. Вопросы, запросы об обработке данных и сообщения о проблемах: pavgromov@gmail.com.
+
+## English summary for IPSC Training
+
+Developer: Pavel Gromov. Contact: pavgromov@gmail.com.
+
+The app stores shooter names, exercises, results, comments, selected videos and shot markers locally. Microphone audio is processed locally for shot detection; this mode does not save a separate audio recording. Video audio is analyzed on the device. Video previews and exports may be created locally. The developer does not operate a training-data collection server or use advertising or developer analytics SDKs.
+
+Bluetooth connects the selected timer or watch. Device names, addresses and pairing data are used for connection and reconnection. Zepp Side Service exchanges commands and state with the phone app through a local loopback connection. The official Garmin Connect IQ SDK communicates with selected Garmin watches through Garmin Connect. User videos and microphone audio are not transmitted through these watch links. Zepp and Garmin handle their own account and platform data under their respective policies. Screen dimensions are read to adapt the watch layout.
+
+Exports are shared only at the user's request using the system share menu. Local settings and files remain until removed using app or system controls. The app may retain local journal recovery copies. Clearing app storage removes its private data; separately exported files must be removed from their destinations. Watch and companion-app data can be removed using the corresponding platform controls.
+
+For questions or data requests contact pavgromov@gmail.com. Email sends the sender address and message to the developer for support. Do not include passwords or pairing secrets.
